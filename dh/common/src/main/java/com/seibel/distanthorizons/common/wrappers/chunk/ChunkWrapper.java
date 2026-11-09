@@ -242,7 +242,10 @@ public class ChunkWrapper implements IChunkWrapper
 	public static int getHeight(ChunkAccess chunk)
 	#endif
 	{
-		#if MC_VER < MC_1_17_1
+		#if MC_VER <= MC_1_7_10
+		// Forge's world height, which mods that make the world taller change; the level wrappers use it too
+		return chunk.worldObj.getHeight();
+		#elif MC_VER < MC_1_17_1
 		return 255;
 		#else
 		return chunk.getHeight();
@@ -274,7 +277,9 @@ public class ChunkWrapper implements IChunkWrapper
 	public static int getExclusiveMaxBuildHeight(ChunkAccess chunk) 
 	#endif
 	{
-		#if MC_VER <= MC_1_12_2
+		#if MC_VER <= MC_1_7_10
+		return chunk.worldObj.getHeight();
+		#elif MC_VER <= MC_1_12_2
 		return 256;
 		#elif MC_VER < MC_1_21_3
 		return chunk.getMaxBuildHeight();
@@ -442,7 +447,7 @@ public class ChunkWrapper implements IChunkWrapper
 		if (this.solidHeightMap == null)
 		{
 			#if MC_VER <= MC_1_7_10
-			return 255; // assume max height so we don't miss anything
+			return this.getExclusiveMaxBuildHeight() - 1; // assume max height so we don't miss anything
 			#elif MC_VER <= MC_1_12_2
 			return this.chunk.getHeightValue(xRel, zRel);
 			#else
