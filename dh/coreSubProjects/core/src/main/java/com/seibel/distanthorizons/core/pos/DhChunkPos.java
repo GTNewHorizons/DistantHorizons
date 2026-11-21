@@ -21,39 +21,40 @@ package com.seibel.distanthorizons.core.pos;
 
 import com.seibel.distanthorizons.core.pos.blockPos.DhBlockPos;
 import com.seibel.distanthorizons.core.pos.blockPos.DhBlockPos2D;
+import com.seibel.distanthorizons.core.pos.blockPos.DhBlockPosMutable;
 import com.seibel.distanthorizons.core.util.LodUtil;
 import com.seibel.distanthorizons.core.util.math.DhVec3d;
+import com.seibel.distanthorizons.coreapi.util.BitShiftUtil;
+
+import java.util.Objects;
 
 /**
  * immutable <br><br>
  * 
  * Dev note: if for some reason we want to store these as longs check the old commits. <br>
  * That logic was removed since it wasn't needed at the time
+ *
+ * @see DhChunkPosMutable
  */
 public class DhChunkPos
 {
-	private final int x;
+	protected int x;
 	public int getX() { return this.x; }
 	
-	private final int z;
+	protected int z;
 	public int getZ() { return this.z; }
-	
-	/** cached to improve hashing speed */
-	public final int hashCode;
 	
 	
 	
 	//==============//
 	// constructors //
 	//==============//
+	//region
 	
 	public DhChunkPos(int x, int z)
 	{
 		this.x = x;
 		this.z = z;
-		
-		// custom hash, 7309 is a random prime
-		this.hashCode = this.x * 7309 + this.z;
 	}
 	public DhChunkPos(DhBlockPos blockPos)
 	{
@@ -71,11 +72,14 @@ public class DhChunkPos
 		this(((int)pos.x) >> 4, ((int)pos.z) >> 4);
 	}
 	
+	//endregion
+	
 	
 	
 	//=========//
 	// methods //
 	//=========//
+	//region
 	
 	public DhBlockPos centerBlockPos() { return new DhBlockPos(8 + this.x << 4, 0, 8 + this.z << 4); }
 	public DhBlockPos minCornerBlockPos() { return new DhBlockPos(this.x << 4, 0, this.z << 4); }
@@ -122,14 +126,18 @@ public class DhChunkPos
 	
 	public double distance(DhChunkPos other)
 	{ return Math.sqrt(Math.pow(this.x - other.x, 2) + Math.pow(this.z - other.z, 2)); }
+	
 	public double squaredDistance(DhChunkPos other)
 	{ return Math.pow(this.x - other.x, 2) + Math.pow(this.z - other.z, 2); }
+	
+	//endregion
 	
 	
 	
 	//================//
 	// base overrides //
 	//================//
+	//region
 	
 	@Override
 	public boolean equals(Object obj)
@@ -150,9 +158,13 @@ public class DhChunkPos
 	}
 	
 	@Override
-	public int hashCode() { return this.hashCode; }
+	public int hashCode() { return Objects.hash(this.x, this.z); }
 	
 	@Override
 	public String toString() { return "C[" + this.x + "," + this.z + "]"; }
+	
+	//endregion
+	
+	
 	
 }

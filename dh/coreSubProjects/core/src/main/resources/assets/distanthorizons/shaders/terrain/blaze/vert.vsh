@@ -4,9 +4,12 @@
 
 layout(location = 0) in uvec4 vPositionAndMeta; // Meta contains light and micro-offset data
 layout(location = 1) in vec4 vColor;
-layout(location = 2) in uint irisMaterial;
-layout(location = 3) in uint irisNormal;
-layout(location = 4) in uint textureTile; // block texture tile id, 0 = flat color
+// x: iris material, y: normal index, zw: block texture tile id (0 = flat color)
+layout(location = 2) in uvec4 materialNormalTile;
+// xyz: offset inside the block in 256ths, w: flags, see EDhApiTerrainVertexFormat
+layout(location = 3) in uvec4 offsetData;
+// xy: model texture position, zw: normal, see EDhApiTerrainVertexFormat
+layout(location = 4) in uvec4 uvNormal;
 
 // order matters, this must match the fragment shader's inputs
 layout(location = 0) out vec3 vPos;
@@ -16,6 +19,8 @@ layout(location = 2) out vec3 vertexWorldPos;
 layout(location = 3) out vec3 vBlockPos;
 layout(location = 4) flat out uint vNormalIndex;
 layout(location = 5) flat out uint vTextureTileId;
+layout(location = 7) out vec2 vModelUv;
+layout(location = 8) flat out uint vUsesModelUv;
 
 layout (std140) uniform vertUniqueUniformBlock
 {
@@ -41,6 +46,9 @@ layout (std140) uniform vertSharedUniformBlock
 
 uniform sampler2D uLightMap;
 
+// fraction of their distance flat models are pulled toward the camera
+const float FLAT_MODEL_PULL = 0.001;
+
 vec2 jitterOffsets[8] = vec2[8](
     vec2( 0.125, -0.375),
     vec2(-0.125,  0.375),
@@ -65,12 +73,20 @@ void main()
 {
     vec3 vPosition = vPositionAndMeta.xyz;
     uint meta = vPositionAndMeta.w;
+    vPosition += vec3(offsetData.xyz) / 256.0;
+    // model positions are signed
+    if ((offsetData.w & 1u) != 0u)
+    {
+        vPosition -= vec3(greaterThan(vPositionAndMeta.xyz, uvec3(32767u))) * 65536.0;
+    }
     
     vPos = vPosition; // This is so it can be passed to the fragment shader
     
     vBlockPos = vec3(vPosition.xyz);
-    vNormalIndex = uint(irisNormal);
-    vTextureTileId = textureTile;
+    vNormalIndex = materialNormalTile.y;
+    vTextureTileId = materialNormalTile.z | (materialNormalTile.w << 8u);
+    vModelUv = vec2(uvNormal.xy) / 255.0;
+    vUsesModelUv = offsetData.w & 1u;
     
     ivec3 relOffset = uModelOffset - uCorseCameraPos; // ints needed for extreme (10 million +) distances
     vertexWorldPos = vPosition.xyz + (vec3(relOffset) - uFineCameraPos);
@@ -111,6 +127,12 @@ void main()
     if (!uIsWhiteWorld)
     {
         vertexColor *= vColor;
+    }
+    
+    // keeps flat models from z-fighting with the block behind them
+    if ((offsetData.w & 2u) != 0u)
+    {
+        vertexWorldPos *= 1.0 - FLAT_MODEL_PULL;
     }
     
     gl_Position = uCombinedMatrix * vec4(vertexWorldPos, 1.0);

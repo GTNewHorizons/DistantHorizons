@@ -19,10 +19,7 @@
 
 package com.seibel.distanthorizons.core.config.eventHandlers.presets;
 
-import com.seibel.distanthorizons.api.enums.config.EDhApiHorizontalQuality;
-import com.seibel.distanthorizons.api.enums.config.EDhApiMaxHorizontalResolution;
-import com.seibel.distanthorizons.api.enums.config.EDhApiMcRenderingFadeMode;
-import com.seibel.distanthorizons.api.enums.config.EDhApiVerticalQuality;
+import com.seibel.distanthorizons.api.enums.config.*;
 import com.seibel.distanthorizons.api.enums.config.quickOptions.EDhApiQualityPreset;
 import com.seibel.distanthorizons.api.enums.rendering.EDhApiTransparency;
 import com.seibel.distanthorizons.core.config.Config;
@@ -132,6 +129,33 @@ public class RenderQualityPresetConfigEventHandler extends AbstractPresetConfigE
 				this.put(EDhApiQualityPreset.HIGH, 3);
 				this.put(EDhApiQualityPreset.EXTREME, 3);
 			}});
+	private final ConfigPresetOptions<EDhApiQualityPreset, Boolean> blockModelRendering = new ConfigPresetOptions<>(Config.Client.Advanced.Graphics.Model.enableBlockModels,
+			new HashMap<EDhApiQualityPreset, Boolean>()
+			{{
+				this.put(EDhApiQualityPreset.MINIMUM, false);
+				this.put(EDhApiQualityPreset.LOW, false);
+				this.put(EDhApiQualityPreset.MEDIUM, true);
+				this.put(EDhApiQualityPreset.HIGH, true);
+				this.put(EDhApiQualityPreset.EXTREME, true);
+			}});
+	private final ConfigPresetOptions<EDhApiQualityPreset, Boolean> noncollidingModelRendering = new ConfigPresetOptions<>(Config.Client.Advanced.Graphics.Model.enableNonCollidingBlockModels,
+			new HashMap<EDhApiQualityPreset, Boolean>()
+			{{
+				this.put(EDhApiQualityPreset.MINIMUM, false);
+				this.put(EDhApiQualityPreset.LOW, false);
+				this.put(EDhApiQualityPreset.MEDIUM, true);
+				this.put(EDhApiQualityPreset.HIGH, true);
+				this.put(EDhApiQualityPreset.EXTREME, true);
+			}});
+	private final ConfigPresetOptions<EDhApiQualityPreset, EDhApiGrassSideRendering> grassSideRendering = new ConfigPresetOptions<>(Config.Client.Advanced.Graphics.Quality.grassSideRendering,
+			new HashMap<EDhApiQualityPreset, EDhApiGrassSideRendering>()
+			{{
+				this.put(EDhApiQualityPreset.MINIMUM, EDhApiGrassSideRendering.FADE_TO_DIRT);
+				this.put(EDhApiQualityPreset.LOW, EDhApiGrassSideRendering.FADE_TO_DIRT);
+				this.put(EDhApiQualityPreset.MEDIUM, EDhApiGrassSideRendering.GRASS_TOP_BLOCK);
+				this.put(EDhApiQualityPreset.HIGH, EDhApiGrassSideRendering.GRASS_TOP_BLOCK);
+				this.put(EDhApiQualityPreset.EXTREME, EDhApiGrassSideRendering.GRASS_TOP_BLOCK);
+			}});
 		
 	
 	
@@ -153,6 +177,9 @@ public class RenderQualityPresetConfigEventHandler extends AbstractPresetConfigE
 		this.configList.add(this.dhDither);
 		this.configList.add(this.caveCulling);
 		this.configList.add(this.biomeBlending);
+		this.configList.add(this.blockModelRendering);
+		this.configList.add(this.noncollidingModelRendering);
+		this.configList.add(this.grassSideRendering);
 		
 		
 		for (ConfigPresetOptions<EDhApiQualityPreset, ?> config : this.configList)

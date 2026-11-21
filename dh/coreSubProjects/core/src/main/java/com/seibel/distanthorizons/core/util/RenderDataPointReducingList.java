@@ -24,9 +24,12 @@ import com.seibel.distanthorizons.core.dataObjects.render.columnViews.ColumnRend
 import com.seibel.distanthorizons.core.util.objects.pooling.PhantomArrayList.AbstractPhantomArrayList;
 import com.seibel.distanthorizons.core.util.objects.pooling.PhantomArrayList.PhantomArrayListPool;
 import com.seibel.distanthorizons.core.util.LodUtil.AssertFailureException;
+import it.unimi.dsi.fastutil.bytes.ByteArrayList;
 import it.unimi.dsi.fastutil.longs.LongArrayList;
 import it.unimi.dsi.fastutil.shorts.ShortArrayList;
 import it.unimi.dsi.fastutil.shorts.ShortArrays;
+
+import java.util.function.LongPredicate;
 
 /**
  * A list of data points whose sole purpose is to {@link #reduce(int)} them.
@@ -104,6 +107,8 @@ public class RenderDataPointReducingList extends AbstractPhantomArrayList
 	private short lowest, highest, smallest, biggest;
 	private short sizeWithAir, sizeWithoutAir;
 	private LongArrayList links, data;
+	/** 1 for model points */
+	private ByteArrayList isModelByIndex;
 	/**
 	 * a temporary array to be used for sorting nodes.
 	 * the array is first populated such that every index
@@ -122,7 +127,7 @@ public class RenderDataPointReducingList extends AbstractPhantomArrayList
 	
 	public RenderDataPointReducingList()
 	{
-		super(ARRAY_LIST_POOL, 0, 1, 2, 0, 0);
+		super(ARRAY_LIST_POOL, 1, 1, 2, 0, 0);
 	}
 	
 	/** 
@@ -130,7 +135,7 @@ public class RenderDataPointReducingList extends AbstractPhantomArrayList
 	 * Note: this must be called before this list can be used and this
 	 * object can only be used by one thread at a time.
 	 */
-	public void populate(ColumnRenderView view)
+	public void populate(ColumnRenderView view, LongPredicate isModel)
 	{
 		int size = view.size;
 		if (size == 0) 
@@ -141,6 +146,7 @@ public class RenderDataPointReducingList extends AbstractPhantomArrayList
 			this.setBiggest(NULL);
 			this.links = this.pooledArraysCheckout.getLongArray(0, 0);
 			this.data = this.pooledArraysCheckout.getLongArray(1, 0);
+			this.isModelByIndex = this.pooledArraysCheckout.getByteArray(0, 0);
 			this.sortingArray = this.pooledArraysCheckout.getShortArray(0, 0);
 			if (ASSERTS) this.checkLinks();
 			
@@ -158,6 +164,7 @@ public class RenderDataPointReducingList extends AbstractPhantomArrayList
 		this.links = this.pooledArraysCheckout.getLongArray(0, arrayCapacity);
 		java.util.Arrays.fill(this.links.elements(), DEFAULT_LINKS);
 		this.data = this.pooledArraysCheckout.getLongArray(1, arrayCapacity);
+		this.isModelByIndex = this.pooledArraysCheckout.getByteArray(0, arrayCapacity);
 		
 		int sizeWithoutAir = 0;
 		for (int index = 0; index < size; index++) 
@@ -168,6 +175,7 @@ public class RenderDataPointReducingList extends AbstractPhantomArrayList
 			if (isDataVisible(packedData) && RenderDataPointUtil.getYMin(packedData) < RenderDataPointUtil.getYMax(packedData)) 
 			{
 				this.setData(sizeWithoutAir, packedData);
+				this.isModelByIndex.set(sizeWithoutAir, (byte) (isModel.test(packedData) ? 1 : 0));
 				this.setSortingIndex(sizeWithoutAir, sizeWithoutAir);
 				sizeWithoutAir++;
 			}
@@ -291,6 +299,8 @@ public class RenderDataPointReducingList extends AbstractPhantomArrayList
 	 * 	2: if we reach the end of the list before having a success, try again,
 	 * 		but this time, we are allowed to erase a segment entirely without merging it
 	 * 		if there are equal-alpha'd segments above and below it.
+	 * 	2b: if we still fail, drop model points, lowest first.
+	 * 		steps 1 and 2 never stretch these.
 	 * 	3: if we still fail, force the lowest segment to merge with the segment above it,
 	 * 		with no restrictions on alpha.
 	 * 		the highest alpha of the two segments takes priority though.
@@ -323,6 +333,7 @@ public class RenderDataPointReducingList extends AbstractPhantomArrayList
 		
 		if (this.mergeConnectedSegments(target)) return;
 		if (this.removeLeastImportantSegments(target)) return;
+		if (this.dropModelSegments(target)) return;
 		this.forceBottomToMerge(target);
 	}
 	
@@ -589,10 +600,10 @@ public class RenderDataPointReducingList extends AbstractPhantomArrayList
 		int toExtendDownwards;
 		int toRemove;
 		
-		
-		if (higher != NULL && this.getAlpha(higher) == this.getAlpha(current)) 
+		// models never grow
+		if (higher != NULL && !this.isModel(higher) && this.getAlpha(higher) == this.getAlpha(current)) 
 		{
-			if (lower != NULL && this.getAlpha(lower) == this.getAlpha(current)) 
+			if (lower != NULL && !this.isModel(current) && this.getAlpha(lower) == this.getAlpha(current)) 
 			{
 				if (this.getSize(higher) <= this.getSize(lower)) 
 				{
@@ -613,7 +624,7 @@ public class RenderDataPointReducingList extends AbstractPhantomArrayList
 		}
 		else
 		{
-			if (lower != NULL && this.getAlpha(lower) == this.getAlpha(current))
+			if (lower != NULL && !this.isModel(current) && this.getAlpha(lower) == this.getAlpha(current))
 			{
 				toExtendDownwards = current;
 				toRemove = lower;
@@ -751,7 +762,9 @@ public class RenderDataPointReducingList extends AbstractPhantomArrayList
 			
 			int lower = this.getLower(center);
 			int higher = this.getHigher(center);
-			if (lower != NULL && higher != NULL && this.getAlpha(lower) == this.getAlpha(higher))
+			if (lower != NULL && higher != NULL && this.getAlpha(lower) == this.getAlpha(higher)
+				// models never grow
+				&& !this.isModel(higher))
 			{
 				this.setMinY(higher, this.getMinY(lower));
 				this.resortSize(higher);
@@ -764,6 +777,30 @@ public class RenderDataPointReducingList extends AbstractPhantomArrayList
 			else
 			{
 				center = this.getBigger(center);
+			}
+		}
+		return false;
+	}
+	
+	/**
+	 * handles step 2b of {@link #reduce(int)}.
+	 * returns true if the list's size is now less than or equal to target.
+	 */
+	private boolean dropModelSegments(int target)
+	{
+		for (int node = this.getLowest(); node != NULL; node = this.getHigher(node))
+		{
+			if (this.getSizeWithoutAir() <= target)
+			{
+				return true;
+			}
+			
+			// becomes a gap
+			if (this.isIndexVisible(node) && this.isModel(node))
+			{
+				this.setAlpha(node, 0);
+				this.sizeWithoutAir--;
+				if (ASSERTS) this.checkLinks();
 			}
 		}
 		return false;
@@ -845,10 +882,11 @@ public class RenderDataPointReducingList extends AbstractPhantomArrayList
 	 * and every other property of the returned data point
 	 * matches those of the data point with the highest
 	 * Y level in the provided view.
+	 * model points are skipped.
 	 *
 	 * @implNote this method does not allocate any objects.
 	 */
-	public static long reduceToOne(ColumnRenderView view) 
+	public static long reduceToOne(ColumnRenderView view, LongPredicate isModel) 
 	{
 		int size = view.size;
 		if (size <= 0)
@@ -865,7 +903,7 @@ public class RenderDataPointReducingList extends AbstractPhantomArrayList
 			for (; index < size; index++)
 			{
 				long dataPoint = view.get(index);
-				if (isDataVisible(dataPoint))
+				if (isDataVisible(dataPoint) && !isModel.test(dataPoint))
 				{
 					highestDataPoint = dataPoint;
 					lowestDataPoint = dataPoint;
@@ -880,7 +918,7 @@ public class RenderDataPointReducingList extends AbstractPhantomArrayList
 		for (; index < size; index++)
 		{
 			long dataPoint = view.get(index);
-			if (isDataVisible(dataPoint))
+			if (isDataVisible(dataPoint) && !isModel.test(dataPoint))
 			{
 				int yMax = RenderDataPointUtil.getYMax(dataPoint);
 				int yMin = RenderDataPointUtil.getYMin(dataPoint);
@@ -1043,6 +1081,8 @@ public class RenderDataPointReducingList extends AbstractPhantomArrayList
 	//================//
 	
 	public boolean isIndexVisible(int index) { return isDataVisible(this.getData(index)); }
+	
+	public boolean isModel(int index) { return this.isModelByIndex.getByte(index) == 1; }
 
 	public static boolean isDataVisible(long data) { return isAlphaVisible(RenderDataPointUtil.getAlpha(data)); }
 

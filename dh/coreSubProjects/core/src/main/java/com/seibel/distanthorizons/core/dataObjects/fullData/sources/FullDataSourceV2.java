@@ -1132,7 +1132,7 @@ public class FullDataSourceV2
 				
 				
 				// world compression //
-				byte worldCompressionMode = inputDataSource.columnWorldCompressionMode.getByte(recipientIndex);
+				byte worldCompressionMode = inputDataSource.columnWorldCompressionMode.getByte(inputIndex);
 				this.columnWorldCompressionMode.set(recipientIndex, worldCompressionMode);
 				
 				

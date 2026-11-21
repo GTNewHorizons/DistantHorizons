@@ -81,6 +81,11 @@ public class LodUtil
 	/** the opacity value returned by {@link IBlockStateWrapper#getOpacity()} if a block is fully opaque */
 	public static final int BLOCK_FULLY_OPAQUE = 16;
 	
+	/** This {@link IBlockStateWrapper} isn't a fluid or has no fluid in it */
+	public static final int NO_FLUID_AMOUNT = 0;
+	public static final int MIN_FLUID_AMOUNT = 1;
+	public static final int MAX_FLUID_AMOUNT = 8;
+	
 	public static final double WALKING_SPEED_IN_BLOCKS_PER_SEC = 4.1;
 	public static final double SPRINTING_SPEED_IN_BLOCKS_PER_SEC = 7.1;
 	public static final double ROCKET_ELYTRA_SPEED_IN_BLOCKS_PER_SEC = 30.0;

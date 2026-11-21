@@ -81,10 +81,16 @@ public class OculusAccessor implements IIrisAccessor
 		return false;
 	}
 	
-	@Override
-	public int getFramebufferDepthTextureId(Object framebuffer)
+	@Override 
+	public boolean supportsMultiBackend()
 	{
-		return -1;
+		// only supported in Iris MC 26.3+
+		return false;
 	}
+	
+	@Override
+	public int getFramebufferDepthTextureId(Object framebuffer) { return -1; }
+	
+	
 	
 }

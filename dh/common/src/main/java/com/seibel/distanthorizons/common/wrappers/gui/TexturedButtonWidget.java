@@ -167,12 +167,12 @@ public class TexturedButtonWidget
 	{
 		if (this.visible)
 		{
-			this.hovered =
+			this.field_146123_n = // hovered
 				mouseX >= this.xPosition
 					&& mouseY >= this.yPosition
 					&& mouseX < this.xPosition + this.width
 					&& mouseY < this.yPosition + this.height;
-			int hoverState = this.getHoverState(this.hovered);
+			int hoverState = this.getHoverState(this.field_146123_n);
 			
 			LWJGL.glColor4f(1.0F, 1.0F, 1.0F, 1.0F);
 			LWJGL.glEnable(GL11.GL_BLEND);
@@ -193,7 +193,7 @@ public class TexturedButtonWidget
 			}
 			
 			mc.getTextureManager().bindTexture(this.textureResourceLocation);
-			drawModalRectWithCustomSizedTexture(this.xPosition, this.yPosition, this.u, this.v + (this.hoveredVOffset * this.getIconHoverState(this.hovered)), this.width, this.height, this.textureWidth, this.textureHeight);
+			func_146110_a(this.xPosition, this.yPosition, this.u, this.v + (this.hoveredVOffset * this.getIconHoverState(this.field_146123_n)), this.width, this.height, this.textureWidth, this.textureHeight); // drawModalRectWithCustomSizedTexture
 		}
 	}
 	private int getIconHoverState(boolean mouseOver)

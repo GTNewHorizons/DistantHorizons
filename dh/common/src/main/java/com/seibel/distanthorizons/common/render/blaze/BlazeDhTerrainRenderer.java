@@ -22,11 +22,13 @@ import com.mojang.renderpearl.api.vertex.VertexFormat;
 #endif
 
 import com.seibel.distanthorizons.api.enums.config.EDhApiDepthDirection;
+import com.seibel.distanthorizons.api.enums.rendering.EDhApiTerrainRenderPass;
 import com.seibel.distanthorizons.api.interfaces.render.renderDef.objects.IDhApiTerrainBufferContainer;
 import com.seibel.distanthorizons.api.interfaces.render.renderDef.objects.IDhApiVertexBufferWrapper;
 import com.seibel.distanthorizons.api.methods.events.abstractEvents.DhApiBeforeBufferRenderEvent;
 import com.seibel.distanthorizons.api.methods.events.abstractEvents.DhApiBeforeRenderPassEvent;
 import com.seibel.distanthorizons.api.methods.events.sharedParameterObjects.DhApiRenderParam;
+import com.seibel.distanthorizons.api.objects.math.DhApiVec3i;
 import com.seibel.distanthorizons.api.objects.util.IDhApiReadOnlyList;
 import com.seibel.distanthorizons.common.render.blaze.util.BlazeDhVertexFormatUtil;
 import com.seibel.distanthorizons.common.render.blaze.wrappers.BlazeVertexFormatBuilder;
@@ -40,10 +42,8 @@ import com.seibel.distanthorizons.common.render.blaze.wrappers.buffer.BlazeVerte
 import com.seibel.distanthorizons.common.render.blaze.wrappers.uniform.BlazeUniformBufferWrapper;
 import com.seibel.distanthorizons.common.wrappers.misc.LightMapWrapper;
 import com.seibel.distanthorizons.core.config.Config;
-import com.seibel.distanthorizons.core.dataObjects.render.bufferBuilding.LodBufferContainer;
 import com.seibel.distanthorizons.core.logging.DhLogger;
 import com.seibel.distanthorizons.core.logging.DhLoggerBuilder;
-import com.seibel.distanthorizons.core.pos.DhSectionPos;
 import com.seibel.distanthorizons.core.render.DhApiRenderProxy;
 import com.seibel.distanthorizons.core.render.RenderParam;
 import com.seibel.distanthorizons.core.util.RenderUtil;
@@ -135,9 +135,9 @@ public class BlazeDhTerrainRenderer implements IDhApiTerrainRenderer
 			VertexFormat vertexFormat = new BlazeVertexFormatBuilder()
 				.add("vPositionAndMeta", BlazeDhVertexFormatUtil.SHORT_XYZ_POS_AND_W_META)
 				.add("vColor", BlazeDhVertexFormatUtil.RGBA_UBYTE_COLOR)
-				.add("irisMaterial", BlazeDhVertexFormatUtil.IRIS_MATERIAL)
-				.add("irisNormal", BlazeDhVertexFormatUtil.IRIS_NORMAL)
-				.add("textureTile", BlazeDhVertexFormatUtil.TEXTURE_TILE)
+				.add("materialNormalTile", BlazeDhVertexFormatUtil.MATERIAL_NORMAL_TILE)
+				.add("offsetData", BlazeDhVertexFormatUtil.OFFSET_DATA)
+				.add("uvNormal", BlazeDhVertexFormatUtil.UV_NORMAL)
 				.build();
 			pipelineBuilder.withVertexFormat(vertexFormat);
 			
@@ -172,11 +172,12 @@ public class BlazeDhTerrainRenderer implements IDhApiTerrainRenderer
 	@Override
 	public void render(
 		DhApiRenderParam apiRenderEventParam, 
-		boolean opaquePass,
+		EDhApiTerrainRenderPass renderPass,
 		IDhApiReadOnlyList<? extends IDhApiTerrainBufferContainer> bufferContainers)
 	{
 		RenderParam renderEventParam = (RenderParam)apiRenderEventParam;
 		IProfilerWrapper profiler = renderEventParam.profiler;
+		boolean opaquePass = (renderPass != EDhApiTerrainRenderPass.TRANSPARENT);
 		
 		this.tryInit(renderEventParam);
 		
@@ -277,9 +278,6 @@ public class BlazeDhTerrainRenderer implements IDhApiTerrainRenderer
 			
 			
 			
-			profiler.popPush("block texture upload");
-			BlazeBlockTextureAtlas.INSTANCE.uploadPendingTiles();
-			
 			// render pass setup
 			{
 				profiler.popPush("rendering");
@@ -312,16 +310,19 @@ public class BlazeDhTerrainRenderer implements IDhApiTerrainRenderer
 					
 					for (int lodIndex = 0; lodIndex < bufferContainers.size(); lodIndex++)
 					{
-						IDhApiTerrainBufferContainer apiBufferContainer = bufferContainers.get(lodIndex);
-						LodBufferContainer bufferContainer = (LodBufferContainer) apiBufferContainer;
-						BlazeLodUniformBufferWrapper uniformWrapper = (BlazeLodUniformBufferWrapper) bufferContainer.getUniformContainer();
+						// the containers are sorted near to far, transparent LODs need to be drawn far to near
+						// so closer transparent LODs don't depth-cull the ones behind them
+						int containerIndex = opaquePass ? lodIndex : (bufferContainers.size() - 1 - lodIndex);
+						IDhApiTerrainBufferContainer apiBufferContainer = bufferContainers.get(containerIndex);
+						
+						BlazeLodUniformBufferWrapper uniformWrapper = (BlazeLodUniformBufferWrapper) apiBufferContainer.getUniformContainer();
 						
 						boolean columnBuilderDebugEnabled = Config.Client.Advanced.Debugging.ColumnBuilderDebugging.columnBuilderDebugEnable.get();
 						if (columnBuilderDebugEnabled)
 						{
-							if (DhSectionPos.getDetailLevel(bufferContainer.pos) == Config.Client.Advanced.Debugging.ColumnBuilderDebugging.columnBuilderDebugDetailLevel.get()
-								&& DhSectionPos.getX(bufferContainer.pos) == Config.Client.Advanced.Debugging.ColumnBuilderDebugging.columnBuilderDebugXPos.get()
-								&& DhSectionPos.getZ(bufferContainer.pos) == Config.Client.Advanced.Debugging.ColumnBuilderDebugging.columnBuilderDebugZPos.get())
+							if (apiBufferContainer.getDetailLevel() == Config.Client.Advanced.Debugging.ColumnBuilderDebugging.columnBuilderDebugDetailLevel.get()
+								&& apiBufferContainer.getLodPosX() == Config.Client.Advanced.Debugging.ColumnBuilderDebugging.columnBuilderDebugXPos.get()
+								&& apiBufferContainer.getLodPosZ() == Config.Client.Advanced.Debugging.ColumnBuilderDebugging.columnBuilderDebugZPos.get())
 							{
 								int breakpoint = 0;
 							}
@@ -336,9 +337,17 @@ public class BlazeDhTerrainRenderer implements IDhApiTerrainRenderer
 						
 						
 						// render each buffer
-						IDhApiVertexBufferWrapper[] bufferWrapperList = opaquePass 
-							? bufferContainer.getVboOpaqueWrappers() 
-							: bufferContainer.getVboTransparentWrappers();
+						IDhApiVertexBufferWrapper[] bufferWrapperList;
+						if (!opaquePass)
+						{
+							bufferWrapperList = apiBufferContainer.getVboTransparentWrappers();
+						}
+						else
+						{
+							bufferWrapperList = (renderPass == EDhApiTerrainRenderPass.OPAQUE_WITHOUT_SSAO)
+								? apiBufferContainer.getVboWithoutSsaoWrappers() 
+								: apiBufferContainer.getVboOpaqueWrappers();
+						}
 						for (int i = 0; i < bufferWrapperList.length; i++)
 						{
 							BlazeVertexBufferWrapper bufferWrapper = (BlazeVertexBufferWrapper) bufferWrapperList[i];
@@ -351,13 +360,15 @@ public class BlazeDhTerrainRenderer implements IDhApiTerrainRenderer
 							
 							// fire render event
 							{
+								DhApiVec3i minCornerBlockPos = apiBufferContainer.getMinCornerBlockPos();
 								DhVec3d camPos = renderEventParam.exactCameraPosition;
 								MODEL_POS.set(
-									(float) (bufferContainer.minCornerBlockPos.getX() - camPos.x),
-									(float) (bufferContainer.minCornerBlockPos.getY() - camPos.y),
-									(float) (bufferContainer.minCornerBlockPos.getZ() - camPos.z));
+									(float) (minCornerBlockPos.x - camPos.x),
+									(float) (minCornerBlockPos.y - camPos.y),
+									(float) (minCornerBlockPos.z - camPos.z));
 								BEFORE_BUFFER_RENDER_EVENT_PARAM.update(renderEventParam, MODEL_POS);
 								ApiEventInjector.INSTANCE.fireAllEvents(DhApiBeforeBufferRenderEvent.class, BEFORE_BUFFER_RENDER_EVENT_PARAM);
+								BEFORE_BUFFER_RENDER_EVENT_PARAM.clearLevelReferences();
 							}
 							
 							renderPassWrapper.setIndexBuffer(bufferWrapper.getIndexGpuBuffer());

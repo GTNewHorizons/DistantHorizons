@@ -23,7 +23,8 @@ import com.seibel.distanthorizons.api.enums.rendering.EDhApiBlockMaterial;
 import com.seibel.distanthorizons.api.enums.rendering.EDhApiTransparency;
 import com.seibel.distanthorizons.core.config.Config;
 import com.seibel.distanthorizons.core.dataObjects.render.ColumnRenderSource;
-import com.seibel.distanthorizons.core.dataObjects.render.textures.BlockTextureRegistry;
+import com.seibel.distanthorizons.core.dataObjects.render.textures.BlockRenderRegistry;
+import com.seibel.distanthorizons.core.dataObjects.render.textures.BlockRenderSet;
 import com.seibel.distanthorizons.core.dependencyInjection.SingletonInjector;
 import com.seibel.distanthorizons.core.enums.EDhDirection;
 import com.seibel.distanthorizons.core.level.IDhClientLevel;
@@ -59,10 +60,13 @@ public class ColumnBox
 		LodQuadBuilder builder, PhantomArrayListCheckout phantomArrayCheckout, IClientLevelWrapper clientLevelWrapper,
 		short blockWidth, short yHeight,
 		short minX, short minY, short minZ,
-		int color, byte irisBlockMaterialId, byte skyLight, byte blockLight,
+		// the raw datapoint color is used for culling purposes and is handled separately to prevent culling issues when the color is modified
+		int color, int rawDataPointColor, byte irisBlockMaterialId, byte skyLight, byte blockLight,
 		long topData, long bottomData, 
 		ColumnRenderView[] adjData, boolean[] isAdjDataSameDetailLevel,
-		short @Nullable [] faceTileIdsByDirectionOrdinal)
+		@Nullable BlockRenderSet topSet, @Nullable BlockRenderSet bottomSet,
+		AdjacentColumnSets adjColumnSets,
+		short @Nullable [] faceTileIdsByDirectionOrdinal, int @Nullable [] faceColors, short topDrops, @Nullable BlockRenderSet waterloggedModelSet)
 	{
 		//================//
 		// variable setup //
@@ -115,16 +119,21 @@ public class ColumnBox
 		{
 			boolean skipTop = RenderDataPointUtil.doesDataPointExist(topData)
 					&& (RenderDataPointUtil.getYMin(topData) == maxY)
-					&& !isTopTransparent;
+					&& (!isTopTransparent || (isTransparent && isSameTransparentBlock(topData, rawDataPointColor, irisBlockMaterialId)))
+					// lowered tops don't touch the block above
+					&& topDrops == 0
+					// models without a full bottom don't hide this face
+					&& ColumnModel.hasFullFace(topSet, EDhDirection.DOWN);
 			
 			if (!skipTop)
 			{
+				int topColor = getFaceColor(color, faceColors, EDhDirection.UP);
 				builder.addQuadUp(
 					minX, maxY, minZ, 
 					blockWidth, 
-					ColorUtil.applyShade(color, clientLevelWrapper.getShade(EDhDirection.UP)), tryGetTextureId(faceTileIdsByDirectionOrdinal, EDhDirection.UP),
+					ColorUtil.applyShade(topColor, clientLevelWrapper.getShade(EDhDirection.UP)), tryGetTextureId(faceTileIdsByDirectionOrdinal, EDhDirection.UP),
 					irisBlockMaterialId, 
-					skyLightTop, blockLight);
+					skyLightTop, blockLight, topDrops);
 			}
 		}
 		
@@ -132,13 +141,18 @@ public class ColumnBox
 		{
 			boolean skipBottom = RenderDataPointUtil.doesDataPointExist(bottomData)
 					&& (RenderDataPointUtil.getYMax(bottomData) == minY)
-					&& !isBottomTransparent;
+					&& (!isBottomTransparent || (isTransparent && isSameTransparentBlock(bottomData, rawDataPointColor, irisBlockMaterialId)))
+					// lowered fluids don't reach the bottom of the block above
+					&& !(RenderDataPointUtil.isFluid(bottomData) && RenderDataPointUtil.getBlockMaterialId(bottomData) != irisBlockMaterialId)
+					// models without a full top don't hide this face
+					&& ColumnModel.hasFullFace(bottomSet, EDhDirection.UP);
 			if (!skipBottom)
 			{
+				int bottomColor = getFaceColor(color, faceColors, EDhDirection.DOWN);
 				builder.addQuadDown(
 					minX, minY, minZ, 
 					blockWidth, 
-					ColorUtil.applyShade(color, clientLevelWrapper.getShade(EDhDirection.DOWN)), tryGetTextureId(faceTileIdsByDirectionOrdinal, EDhDirection.DOWN), 
+					ColorUtil.applyShade(bottomColor, clientLevelWrapper.getShade(EDhDirection.DOWN)), tryGetTextureId(faceTileIdsByDirectionOrdinal, EDhDirection.DOWN), 
 					irisBlockMaterialId, 
 					skyLightBottom, blockLight);
 			}
@@ -152,6 +166,7 @@ public class ColumnBox
 		
 		// NORTH face
 		{
+			int northColor = getFaceColor(color, faceColors, EDhDirection.NORTH);
 			ColumnRenderView adjCol = adjData[EDhDirection.NORTH.compassIndex];
 			boolean adjSameDetailLevel = isAdjDataSameDetailLevel[EDhDirection.NORTH.compassIndex];
 			// if the adjacent column is null that generally means the adjacent area hasn't been generated yet
@@ -164,8 +179,8 @@ public class ColumnBox
 						EDhDirection.NORTH, 
 						minX, minY, minZ, 
 						blockWidth, yHeight, 
-						color, tryGetTextureId(faceTileIdsByDirectionOrdinal, EDhDirection.NORTH),
-						irisBlockMaterialId, LodUtil.MAX_MC_LIGHT, blockLight);
+						northColor, tryGetTextureId(faceTileIdsByDirectionOrdinal, EDhDirection.NORTH),
+						irisBlockMaterialId, LodUtil.MAX_MC_LIGHT, blockLight, topDrops, waterloggedModelSet, false);
 				}
 			}
 			else
@@ -173,14 +188,16 @@ public class ColumnBox
 				makeAdjVerticalQuad(
 					builder, phantomArrayCheckout, clientLevelWrapper,
 					adjCol, faceTileIdsByDirectionOrdinal,
+					adjColumnSets,
 					adjSameDetailLevel, caveCullingMaxY, EDhDirection.NORTH, 
 					minX, minY, minZ, blockWidth, yHeight,
-					color, irisBlockMaterialId, blockLight);
+					northColor, rawDataPointColor, irisBlockMaterialId, blockLight, topDrops, waterloggedModelSet);
 			}
 		}
 		
 		// SOUTH face
 		{
+			int southColor = getFaceColor(color, faceColors, EDhDirection.SOUTH);
 			ColumnRenderView adjCol = adjData[EDhDirection.SOUTH.compassIndex];
 			boolean adjSameDetailLevel = isAdjDataSameDetailLevel[EDhDirection.SOUTH.compassIndex];
 			if (adjCol == null)
@@ -191,8 +208,8 @@ public class ColumnBox
 						EDhDirection.SOUTH, 
 						minX, minY, maxZ, 
 						blockWidth, yHeight, 
-						color, tryGetTextureId(faceTileIdsByDirectionOrdinal, EDhDirection.SOUTH),
-						irisBlockMaterialId, LodUtil.MAX_MC_LIGHT, blockLight);
+						southColor, tryGetTextureId(faceTileIdsByDirectionOrdinal, EDhDirection.SOUTH),
+						irisBlockMaterialId, LodUtil.MAX_MC_LIGHT, blockLight, topDrops, waterloggedModelSet, false);
 				}
 			}
 			else
@@ -200,14 +217,16 @@ public class ColumnBox
 				makeAdjVerticalQuad(
 					builder, phantomArrayCheckout, clientLevelWrapper,
 					adjCol, faceTileIdsByDirectionOrdinal,
+					adjColumnSets,
 					adjSameDetailLevel, caveCullingMaxY, EDhDirection.SOUTH,
 					minX, minY, maxZ, blockWidth, yHeight,
-					color, irisBlockMaterialId, blockLight);
+					southColor, rawDataPointColor, irisBlockMaterialId, blockLight, topDrops, waterloggedModelSet);
 			}
 		}
 		
 		// WEST face
 		{
+			int westColor = getFaceColor(color, faceColors, EDhDirection.WEST);
 			ColumnRenderView adjCol = adjData[EDhDirection.WEST.compassIndex];
 			boolean adjSameDetailLevel = isAdjDataSameDetailLevel[EDhDirection.WEST.compassIndex];
 			if (adjCol == null)
@@ -218,8 +237,8 @@ public class ColumnBox
 						EDhDirection.WEST, 
 						minX, minY, minZ, 
 						blockWidth, yHeight, 
-						color, tryGetTextureId(faceTileIdsByDirectionOrdinal, EDhDirection.WEST),
-						irisBlockMaterialId, LodUtil.MAX_MC_LIGHT, blockLight);
+						westColor, tryGetTextureId(faceTileIdsByDirectionOrdinal, EDhDirection.WEST),
+						irisBlockMaterialId, LodUtil.MAX_MC_LIGHT, blockLight, topDrops, waterloggedModelSet, false);
 				}
 			}
 			else
@@ -227,14 +246,16 @@ public class ColumnBox
 				makeAdjVerticalQuad(
 					builder, phantomArrayCheckout, clientLevelWrapper,
 					adjCol, faceTileIdsByDirectionOrdinal,
+					adjColumnSets,
 					adjSameDetailLevel, caveCullingMaxY, EDhDirection.WEST, 
 					minX, minY, minZ, blockWidth, yHeight,
-					color, irisBlockMaterialId, blockLight);
+					westColor, rawDataPointColor, irisBlockMaterialId, blockLight, topDrops, waterloggedModelSet);
 			}
 		}
 		
 		// EAST face
 		{
+			int eastColor = getFaceColor(color, faceColors, EDhDirection.EAST);
 			ColumnRenderView adjCol = adjData[EDhDirection.EAST.compassIndex];
 			boolean adjSameDetailLevel = isAdjDataSameDetailLevel[EDhDirection.EAST.compassIndex];
 			if (adjCol == null)
@@ -245,8 +266,8 @@ public class ColumnBox
 						EDhDirection.EAST, 
 						maxX, minY, minZ, 
 						blockWidth, yHeight, 
-						color, tryGetTextureId(faceTileIdsByDirectionOrdinal, EDhDirection.EAST),
-						irisBlockMaterialId, LodUtil.MAX_MC_LIGHT, blockLight);
+						eastColor, tryGetTextureId(faceTileIdsByDirectionOrdinal, EDhDirection.EAST),
+						irisBlockMaterialId, LodUtil.MAX_MC_LIGHT, blockLight, topDrops, waterloggedModelSet, false);
 				}
 			}
 			else
@@ -254,9 +275,10 @@ public class ColumnBox
 				makeAdjVerticalQuad(
 					builder, phantomArrayCheckout, clientLevelWrapper,
 					adjCol, faceTileIdsByDirectionOrdinal,
+					adjColumnSets,
 					adjSameDetailLevel, caveCullingMaxY, EDhDirection.EAST, 
 					maxX, minY, minZ, blockWidth, yHeight,
-					color, irisBlockMaterialId, blockLight);
+					eastColor, rawDataPointColor, irisBlockMaterialId, blockLight, topDrops, waterloggedModelSet);
 			}
 		}
 	}
@@ -264,9 +286,10 @@ public class ColumnBox
 	private static void makeAdjVerticalQuad(
 		LodQuadBuilder builder, PhantomArrayListCheckout phantomArrayCheckout, IClientLevelWrapper clientLevelWrapper,
 		@NotNull ColumnRenderView adjColumnView, short @Nullable [] faceTileIdsByDirectionOrdinal,
+		AdjacentColumnSets adjColumnSets,
 		boolean adjacentIsSameDetailLevel, int caveCullingMaxY, EDhDirection direction,
 		short x, short yMin, short z, short horizontalBlockWidth, short ySize,
-		int color, byte irisBlockMaterialId, byte blockLight)
+		int color, int dataPointColor, byte irisBlockMaterialId, byte blockLight, short topDrops, @Nullable BlockRenderSet waterloggedModelSet)
 	{
 		// pooled arrays
 		LongArrayList segments = phantomArrayCheckout.getLongArray(0, 0);
@@ -290,7 +313,7 @@ public class ColumnBox
 				horizontalBlockWidth, ySize, 
 				color, tryGetTextureId(faceTileIdsByDirectionOrdinal, direction),
 				irisBlockMaterialId, 
-				LodUtil.MAX_MC_LIGHT, blockLight);
+				LodUtil.MAX_MC_LIGHT, blockLight, topDrops, waterloggedModelSet, false);
 			return;
 		}
 		
@@ -357,10 +380,31 @@ public class ColumnBox
 				&& RenderDataPointUtil.getAlpha(adjPoint) < 255
 				&& transparencyEnabled;
 			
+			BlockRenderSet adjSet = (adjIndex != -1) ? adjColumnSets.getDataPointRenderSet(direction, adjIndex) : null;
+			// models without a full face toward this one can't hide its side,
+			// otherwise a slab placed next to stone would leave a hole in the stone
+			boolean adjSeeThrough = adjTransparent
+				|| !ColumnModel.hasFullFace(adjSet, direction.opposite());
+			
 			byte adjSkyLight = RenderDataPointUtil.getLightSky(adjPoint);
 			byte lightToApply;
+			// whether the adjacent data point hides transparent faces
+			boolean adjCoversRange = true;
 			
-			if (!adjTransparent)
+			// the same fluid never needs a face between them
+			boolean isSameFluid = RenderDataPointUtil.isFluid(adjPoint)
+				&& RenderDataPointUtil.getBlockMaterialId(adjPoint) == irisBlockMaterialId;
+
+			// lowered lava doesn't fill the top of its block,
+			// the same fluid next to it shares its corner heights so there's no gap between them
+			if (!adjTransparent
+				&& !isSameFluid
+				&& RenderDataPointUtil.isSurfaceLowered(adjPoint, adjAbovePoint))
+			{
+				adjMaxY--;
+			}
+			
+			if (!adjSeeThrough)
 			{
 				// Adjacent is opaque
 				
@@ -388,19 +432,33 @@ public class ColumnBox
 					// ...this face has some sort of lighting... (0 light generally means the face is covered by other blocks)
 					&& isLit
 					// ...and is above the culling height
-					&& RenderDataPointUtil.getYMax(adjPoint) >= caveCullingMaxY;
+					&& RenderDataPointUtil.getYMax(adjPoint) >= caveCullingMaxY
+					// ...and isn't next to the same fluid (lava has light of 15)
+					&& !isSameFluid;
 				
 				lightToApply = useAdjLighting ? adjSkyLight : SKYLIGHT_COVERED;
 			}
+			else if (inputTransparent
+				&& isSameTransparentBlock(adjPoint, dataPointColor, irisBlockMaterialId))
+			{
+				// Both are the same transparent block (glass next to glass, water next to water),
+				// hide the shared face.
+				// The below light can't be used for this since it is full sky light
+				// whenever the transparent block doesn't block light (IE glass).
+				lightToApply = SKYLIGHT_COVERED;
+			}
 			else
 			{
-				// Adjacent is transparent, use below light
-				lightToApply = RenderDataPointUtil.getLightSky(adjBelowPoint);
+				// Adjacent is a different transparent block (IE water next to glass),
+				// the face is visible through it, use below light
+				// models use their own light
+				lightToApply = adjTransparent ? RenderDataPointUtil.getLightSky(adjBelowPoint) : adjSkyLight;
+				adjCoversRange = false;
 			}
 			
 			
 			// Apply light to the range [adjMinY, adjMaxY)
-			applyLightToRangeAndPopulateNewSgements(segments, newSegments, adjMinY, adjMaxY, lightToApply, true);
+			applyLightToRangeAndPopulateNewSgements(segments, newSegments, adjMinY, adjMaxY, lightToApply, adjCoversRange);
 			{
 				// swap references so we can use the newly populated segments
 				LongArrayList temp = segments;
@@ -428,9 +486,63 @@ public class ColumnBox
 		// from segments         //
 		//=======================//
 		
+		short grassSideTileId = BlockRenderRegistry.UNTEXTURED_ID;
+		short grassOverlayTileId = BlockRenderRegistry.UNTEXTURED_ID;
+		int grassOverlayColor = color;
+		if (irisBlockMaterialId == EDhApiBlockMaterial.GRASS.index
+			&& faceTileIdsByDirectionOrdinal != null
+			&& faceTileIdsByDirectionOrdinal.length > BlockRenderRegistry.GRASS_OVERLAY_TILE_INDEX
+			&& faceTileIdsByDirectionOrdinal[BlockRenderRegistry.GRASS_SIDE_TILE_INDEX] != BlockRenderRegistry.UNTEXTURED_ID
+			// the texture would stretch on wider LODs
+			&& horizontalBlockWidth == 1
+			&& builder.drawsGrassTopBlock())
+		{
+			grassSideTileId = faceTileIdsByDirectionOrdinal[BlockRenderRegistry.GRASS_SIDE_TILE_INDEX];
+			grassOverlayTileId = faceTileIdsByDirectionOrdinal[BlockRenderRegistry.GRASS_OVERLAY_TILE_INDEX];
+			
+			// the rest of the side is dirt
+			color = ColorUtil.applyShade(clientLevelWrapper.getDirtBlockColor(), clientLevelWrapper.getShade(direction));
+			irisBlockMaterialId = EDhApiBlockMaterial.DIRT.index;
+		}
+		boolean hasGrassOverlay = (grassOverlayTileId != BlockRenderRegistry.UNTEXTURED_ID);
+		// cut bases use the dirt color
+		int grassSideColor = hasGrassOverlay ? color : ColorUtil.applyShade(ColorUtil.WHITE, clientLevelWrapper.getShade(direction));
+		
 		for (int i = 0; i < segments.size(); i++)
 		{
 			long segment = segments.getLong(i);
+			int quadTopY = YSegmentUtil.getEndY(segment);
+			
+			// the top block shows the grass side
+			if (grassSideTileId != BlockRenderRegistry.UNTEXTURED_ID
+				&& quadTopY == yMax)
+			{
+				tryAddVerticalFaceWithSkyLightToBuilder(
+					builder, direction,
+					x, z, horizontalBlockWidth,
+					grassSideColor, grassSideTileId,
+					irisBlockMaterialId, blockLight,
+					YSegmentUtil.getSkyLight(segment), YSegmentUtil.isCovered(segment),
+					inputTransparent,
+					yMax, yMax - 1,
+					(short) 0, waterloggedModelSet, hasGrassOverlay
+				);
+				if (hasGrassOverlay)
+				{
+					tryAddVerticalFaceWithSkyLightToBuilder(
+						builder, direction,
+						x, z, horizontalBlockWidth,
+						grassOverlayColor, grassOverlayTileId,
+						irisBlockMaterialId, blockLight,
+						YSegmentUtil.getSkyLight(segment), YSegmentUtil.isCovered(segment),
+						inputTransparent,
+						yMax, yMax - 1,
+						(short) 0, waterloggedModelSet, true
+					);
+				}
+				quadTopY--;
+			}
+			
 			tryAddVerticalFaceWithSkyLightToBuilder(
 				builder, direction,
 				x, z, horizontalBlockWidth,
@@ -438,7 +550,8 @@ public class ColumnBox
 				irisBlockMaterialId, blockLight,
 				YSegmentUtil.getSkyLight(segment), YSegmentUtil.isCovered(segment),
 				inputTransparent, 
-				YSegmentUtil.getEndY(segment), YSegmentUtil.getStartY(segment)
+				quadTopY, YSegmentUtil.getStartY(segment),
+				(YSegmentUtil.getEndY(segment) == yMax) ? topDrops : 0, waterloggedModelSet, false
 			);
 		}
 	}
@@ -503,7 +616,7 @@ public class ColumnBox
 		byte irisBlockMaterialId, 
 		byte blockLight, byte lastSkyLight, boolean covered,
 		boolean inputTransparent, 
-		int quadTopY, int quadBottomY
+		int quadTopY, int quadBottomY, short topDrops, @Nullable BlockRenderSet waterloggedModelSet, boolean cutOut
 		)
 	{
 		// invalid positions will have a negative skylight
@@ -533,7 +646,7 @@ public class ColumnBox
 			x, (short) quadBottomY, z, 
 			horizontalWidth, height, 
 			color, faceTextureId,
-			irisBlockMaterialId, lastSkyLight, blockLight);
+			irisBlockMaterialId, lastSkyLight, blockLight, topDrops, waterloggedModelSet, cutOut);
 	}
 	
 	//endregion
@@ -549,10 +662,40 @@ public class ColumnBox
 	{
 		if (faceTileIdsByDirectionOrdinal == null)
 		{
-			return BlockTextureRegistry.UNTEXTURED_ID;
+			return BlockRenderRegistry.UNTEXTURED_ID;
 		}
 		
 		return faceTileIdsByDirectionOrdinal[direction.faceIndex];
+	}
+	
+	/** @return the face's own color if it has one, otherwise the LOD's color */
+	private static int getFaceColor(int lodColor, int @Nullable [] faceColors, EDhDirection direction)
+	{
+		if (faceColors == null
+			|| faceColors[direction.faceIndex] == BlockRenderSet.USE_LOD_COLOR)
+		{
+			return lodColor;
+		}
+		
+		// the LOD's alpha is kept so transparency doesn't change
+		return ColorUtil.setAlpha(faceColors[direction.faceIndex], ColorUtil.getAlpha(lodColor));
+	}
+	
+	/**
+	 * Returns true if the adjacent data point is the same transparent block,
+	 * in which case the face between them shouldn't be rendered. <br><br>
+	 *
+	 * The material alone isn't enough since most transparent blocks
+	 * share the same material (IE all stained glass colors are UNKNOWN),
+	 * so the color is compared as well. <br>
+	 * Water is the exception, its biome tint can differ between neighbors
+	 * and comparing the color would create walls inside oceans.
+	 */
+	private static boolean isSameTransparentBlock(long adjData, int dataPointColor, byte irisBlockMaterialId)
+	{
+		return RenderDataPointUtil.getBlockMaterialId(adjData) == irisBlockMaterialId
+			&& (irisBlockMaterialId == EDhApiBlockMaterial.WATER.index
+				|| RenderDataPointUtil.getColor(adjData) == dataPointColor);
 	}
 	
 	//endregion

@@ -3,6 +3,7 @@ package com.seibel.distanthorizons.common.render.openGl;
 import com.seibel.distanthorizons.api.enums.config.EDhApiDepthDirection;
 import com.seibel.distanthorizons.api.enums.config.EDhApiRenderingApi;
 import com.seibel.distanthorizons.api.enums.config.EDhApiDepthRange;
+import com.seibel.distanthorizons.api.enums.rendering.EDhApiTerrainVertexFormat;
 import com.seibel.distanthorizons.api.interfaces.render.renderDef.*;
 import com.seibel.distanthorizons.api.interfaces.render.renderDef.objects.IDhApiVertexBufferWrapper;
 import com.seibel.distanthorizons.common.render.openGl.generic.GlGenericObjectRenderer;
@@ -14,6 +15,7 @@ import com.seibel.distanthorizons.common.render.openGl.postProcessing.fade.GlDhF
 import com.seibel.distanthorizons.common.render.openGl.postProcessing.fade.GlVanillaFadeRenderer;
 import com.seibel.distanthorizons.common.render.openGl.postProcessing.fog.GlDhFogRenderer;
 import com.seibel.distanthorizons.common.render.openGl.postProcessing.ssao.GlDhSSAORenderer;
+import com.seibel.distanthorizons.common.render.openGl.terrain.GlBlockTextureAtlas;
 import com.seibel.distanthorizons.common.render.openGl.test.GlTestTriangleRenderer;
 import com.seibel.distanthorizons.core.dependencyInjection.ModAccessorInjector;
 import com.seibel.distanthorizons.core.wrapperInterfaces.modAccessor.IIrisAccessor;
@@ -65,6 +67,14 @@ public class GlDhRenderApiDefinition extends AbstractDhApiRenderDefinition
 	public boolean isNativeRenderer() { return true; }
 	
 	@Override
+	public EDhApiTerrainVertexFormat getTerrainVertexFormat()
+	{
+		// shader packs (Iris) read the format without offsets
+		boolean shaderPackInUse = (IRIS_ACCESSOR != null && IRIS_ACCESSOR.isShaderPackInUse());
+		return shaderPackInUse ? EDhApiTerrainVertexFormat.POS_META_COLOR_MATERIAL_NORMAL_TEXTURE : EDhApiTerrainVertexFormat.POS_META_COLOR_MATERIAL_NORMAL_TEXTURE_OFFSET;
+	}
+	
+	@Override
 	public int getPriority() { return IOverrideInjector.CORE_PRIORITY; }
 	
 	//endregion
@@ -86,6 +96,7 @@ public class GlDhRenderApiDefinition extends AbstractDhApiRenderDefinition
 	@Override public IDhApiVanillaFadeRenderer getVanillaFadeRenderer() { return GlVanillaFadeRenderer.INSTANCE; }
 	@Override public IDhApiTestTriangleRenderer getTestTriangleRenderer() { return GlTestTriangleRenderer.INSTANCE; }
 	@Override public IDhApiGenericRenderer getGenericRenderer() { return GlGenericObjectRenderer.INSTANCE; }
+	@Override public IDhApiBlockTextureAtlas getTextureAtlasWrapper() { return GlBlockTextureAtlas.INSTANCE; }
 	
 	//endregion
 	

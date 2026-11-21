@@ -64,5 +64,11 @@ public class IrisAccessor implements IIrisAccessor
 		
 		return -1;
 	}
-	
+
+	@Override
+	public boolean supportsMultiBackend()
+	{
+		return false;
+	}
+
 }

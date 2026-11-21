@@ -228,8 +228,25 @@ public class RenderDataPointUtil
 		return (int) (((dataPoint >>> COLOR_SHIFT) & COLOR_MASK) | (alpha << (ALPHA_SHIFT - COLOR_SHIFT)));
 	}
 	
-	/** Return (>0) if dataA should replace dataB, (0) if equal, (<0) if dataB should replace dataA */
-	public static int compareDatapointPriority(long dataA, long dataB) { return (int) ((dataA >> COMPARE_SHIFT) - (dataB >> COMPARE_SHIFT)); }
+	public static boolean isFluid(long data)
+	{
+		byte materialId = RenderDataPointUtil.getBlockMaterialId(data);
+		return materialId == EDhApiBlockMaterial.WATER.index
+			|| materialId == EDhApiBlockMaterial.LAVA.index;
+	}
+	
+	/** Fluids are lowered unless the same fluid is right on top of them */
+	public static boolean isSurfaceLowered(long data, long aboveData)
+	{ return isFluid(data) && !isSameFluidOnTop(data, aboveData); }
+	
+	public static boolean isSameFluidOnTop(long data, long aboveData)
+	{
+		return RenderDataPointUtil.doesDataPointExist(aboveData)
+			&& RenderDataPointUtil.getYMin(aboveData) == RenderDataPointUtil.getYMax(data)
+			&& RenderDataPointUtil.getBlockMaterialId(aboveData) == RenderDataPointUtil.getBlockMaterialId(data);
+	}
+	
+	
 	
 	/** This is used to convert a dataPoint to string (useful for the print function) */
 	@SuppressWarnings("unused")

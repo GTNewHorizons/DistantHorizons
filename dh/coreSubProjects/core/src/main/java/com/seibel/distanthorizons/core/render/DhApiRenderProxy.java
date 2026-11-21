@@ -20,17 +20,16 @@
 package com.seibel.distanthorizons.core.render;
 
 import com.seibel.distanthorizons.api.DhApi;
-import com.seibel.distanthorizons.api.enums.config.EDhApiDepthDirection;
-import com.seibel.distanthorizons.api.enums.config.EDhApiDepthRange;
-import com.seibel.distanthorizons.api.enums.config.EDhApiRenderingApi;
-import com.seibel.distanthorizons.api.enums.config.EDhApiRenderingEngine;
+import com.seibel.distanthorizons.api.enums.config.*;
 import com.seibel.distanthorizons.api.interfaces.render.IDhApiBlazeTextureWrapper;
 import com.seibel.distanthorizons.api.interfaces.render.IDhApiRenderProxy;
 import com.seibel.distanthorizons.api.interfaces.world.IDhApiLevelWrapper;
 import com.seibel.distanthorizons.api.methods.events.abstractEvents.DhApiEBeforeRenderDataCacheClearEvent;
 import com.seibel.distanthorizons.api.objects.DhApiResult;
+import com.seibel.distanthorizons.api.objects.math.DhApiMat4f;
+import com.seibel.distanthorizons.core.api.internal.ClientApi;
 import com.seibel.distanthorizons.core.api.internal.SharedApi;
-import com.seibel.distanthorizons.core.dataObjects.render.textures.BlockTextureRegistry;
+import com.seibel.distanthorizons.core.dataObjects.render.textures.BlockRenderRegistry;
 import com.seibel.distanthorizons.core.dependencyInjection.SingletonInjector;
 import com.seibel.distanthorizons.core.level.IDhClientLevel;
 import com.seibel.distanthorizons.core.level.IDhLevel;
@@ -39,6 +38,7 @@ import com.seibel.distanthorizons.core.world.AbstractDhWorld;
 import com.seibel.distanthorizons.core.wrapperInterfaces.minecraft.IMinecraftRenderWrapper;
 import com.seibel.distanthorizons.api.interfaces.render.renderDef.AbstractDhApiRenderDefinition;
 import com.seibel.distanthorizons.core.wrapperInterfaces.misc.IDependencySetup;
+import com.seibel.distanthorizons.core.wrapperInterfaces.world.IClientLevelWrapper;
 import com.seibel.distanthorizons.coreapi.DependencyInjection.OverrideInjector;
 import org.jetbrains.annotations.Nullable;
 
@@ -66,14 +66,18 @@ public class DhApiRenderProxy implements IDhApiRenderProxy
 	//=============//
 	// constructor //
 	//=============//
+	//region
 	
 	private DhApiRenderProxy() { }
 	
+	//endregion
 	
 	
-	//=========//
-	// methods //
-	//=========//
+	
+	//==============//
+	// render cache //
+	//==============//
+	//region
 	
 	@Override
 	public DhApiResult<Boolean> clearRenderDataCache() { return this.reloadRenderDataCache(true); }
@@ -93,7 +97,7 @@ public class DhApiRenderProxy implements IDhApiRenderProxy
 		DhApi.events.fireAllEvents(DhApiEBeforeRenderDataCacheClearEvent.class, new DhApiEBeforeRenderDataCacheClearEvent.EventParam());
 		
 		// handles both colors and textures
-		BlockTextureRegistry.INSTANCE.clear();
+		BlockRenderRegistry.INSTANCE.clear();
 		
 		// clear the render caches for each level
 		Iterable<? extends IDhLevel> loadedLevels = world.getAllLoadedLevels();
@@ -107,6 +111,15 @@ public class DhApiRenderProxy implements IDhApiRenderProxy
 		
 		return DhApiResult.createSuccess();
 	}
+	
+	//endregion
+	
+	
+	
+	//=========//
+	// getters //
+	//=========//
+	//region
 	
 	@Override 
 	public EDhApiRenderingApi getRenderingApi() throws IllegalStateException
@@ -132,46 +145,6 @@ public class DhApiRenderProxy implements IDhApiRenderProxy
 		}
 		
 		return engine;
-	}
-	
-	@Override
-	public CompletableFuture<DhApiResult<String>> setRenderDefinitionOverrideAsync(AbstractDhApiRenderDefinition renderDef, String apiUserDisplayName)
-	{
-		CompletableFuture<DhApiResult<String>> apiFuture = new CompletableFuture<>();
-		
-		CompletableFuture<String> setFuture = DEPENDENCY_SETUP.trySetRenderDefinitionAsync(renderDef, EDhApiRenderingEngine.API, apiUserDisplayName);
-		setFuture.exceptionally((throwable) -> 
-		{
-			// shouldn't happen, but just in case
-			apiFuture.completeExceptionally(throwable);
-			return null;
-		});
-		setFuture.thenAccept((String message) -> 
-		{
-			if (message != null)
-			{
-				apiFuture.complete(DhApiResult.createFail(message));
-			}
-			else
-			{
-				apiFuture.complete(DhApiResult.createSuccess());
-			}
-		});
-		
-		return apiFuture;
-	}
-	@Override
-	public CompletableFuture<DhApiResult<String>> clearRenderDefinitionOverrideAsync()
-	{
-		CompletableFuture<DhApiResult<String>> apiFuture = new CompletableFuture<>();
-		
-		DEPENDENCY_SETUP.clearRenderDefinitionOverrideAsync()
-			.thenAccept((voidObj) -> 
-			{
-				apiFuture.complete(DhApiResult.createSuccess());
-			});
-		
-		return apiFuture;
 	}
 	
 	@Override 
@@ -212,6 +185,64 @@ public class DhApiRenderProxy implements IDhApiRenderProxy
 		return apiDef.getDepthDirection();
 	}
 	
+	//endregion
+	
+	
+	
+	//============//
+	// render def //
+	//============//
+	//region
+	
+	
+	@Override
+	public CompletableFuture<DhApiResult<String>> setRenderDefinitionOverrideAsync(AbstractDhApiRenderDefinition renderDef, String apiUserDisplayName)
+	{
+		CompletableFuture<DhApiResult<String>> apiFuture = new CompletableFuture<>();
+		
+		CompletableFuture<String> setFuture = DEPENDENCY_SETUP.trySetRenderDefinitionAsync(renderDef, EDhApiRenderingEngine.API, apiUserDisplayName);
+		setFuture.exceptionally((throwable) ->
+		{
+			// shouldn't happen, but just in case
+			apiFuture.completeExceptionally(throwable);
+			return null;
+		});
+		setFuture.thenAccept((String message) ->
+		{
+			if (message != null)
+			{
+				apiFuture.complete(DhApiResult.createFail(message));
+			}
+			else
+			{
+				apiFuture.complete(DhApiResult.createSuccess());
+			}
+		});
+		
+		return apiFuture;
+	}
+	@Override
+	public CompletableFuture<DhApiResult<String>> clearRenderDefinitionOverrideAsync()
+	{
+		CompletableFuture<DhApiResult<String>> apiFuture = new CompletableFuture<>();
+		
+		DEPENDENCY_SETUP.clearRenderDefinitionOverrideAsync()
+			.thenAccept((voidObj) ->
+			{
+				apiFuture.complete(DhApiResult.createSuccess());
+			});
+		
+		return apiFuture;
+	}
+	
+	//endregion
+	
+	
+	
+	//=================//
+	// texture getters //
+	//=================//
+	//region
 	
 	public static int activeOpenGlDhDepthTextureId = -1;
 	@Override
@@ -276,7 +307,14 @@ public class DhApiRenderProxy implements IDhApiRenderProxy
 			: DhApiResult.createSuccess(activeTexture);
 	}
 	
+	//endregion
 	
+	
+	
+	//======================//
+	// Shader compatibility //
+	//======================//
+	//region
 	
 	@Override 
 	public void setDeferTransparentRendering(boolean deferTransparentRendering) { this.deferTransparentRendering = deferTransparentRendering; }
@@ -285,6 +323,89 @@ public class DhApiRenderProxy implements IDhApiRenderProxy
 	
 	@Override
 	public float getNearClipPlaneDistanceInBlocks(float partialTicks) { return RenderUtil.getNearClipPlaneInBlocks(); }
+	
+	//endregion
+	
+	
+	
+	//=======================//
+	// Manual Render Trigger //
+	//=======================//
+	//region
+	
+	@Override
+	public void setUseDhRenderInjections(boolean useDhRenderInjections) { ClientApi.INSTANCE.useDhRenderInjectionPoints = useDhRenderInjections; }
+	@Override
+	public boolean getUseDhRenderInjections() { return ClientApi.INSTANCE.useDhRenderInjectionPoints; }
+	
+	@Override
+	public void renderLodPass(
+		DhApiMat4f minecraftModelViewMatrix, DhApiMat4f minecraftProjectionMatrix,
+		float partialTickTime,
+		IDhApiLevelWrapper clientLevelWrapper,
+		boolean deferredLayer
+		)
+		throws ClassCastException, IllegalArgumentException, NullPointerException
+	{
+		this.setRenderState(minecraftModelViewMatrix, minecraftProjectionMatrix, partialTickTime, clientLevelWrapper);
+		ClientApi.INSTANCE.renderLodsFromApi(deferredLayer);
+	}
+	
+	@Override
+	public void renderVanillaFadePass(
+		DhApiMat4f minecraftModelViewMatrix, DhApiMat4f minecraftProjectionMatrix,
+		float partialTickTime,
+		IDhApiLevelWrapper clientLevelWrapper,
+		boolean transparentPass
+		)
+		throws ClassCastException, IllegalArgumentException, NullPointerException
+	{
+		this.setRenderState(minecraftModelViewMatrix, minecraftProjectionMatrix, partialTickTime, clientLevelWrapper);
+		EDhApiMcRenderingFadeMode fadeMode = transparentPass ? EDhApiMcRenderingFadeMode.SINGLE_PASS : EDhApiMcRenderingFadeMode.DOUBLE_PASS;
+		ClientApi.INSTANCE.renderFadeFromApi(fadeMode);
+	}
+	
+	private void setRenderState(
+		DhApiMat4f minecraftModelViewMatrix, DhApiMat4f minecraftProjectionMatrix,
+		float partialTickTime,
+		IDhApiLevelWrapper clientLevelWrapper
+		)
+		throws ClassCastException, IllegalArgumentException, NullPointerException
+	{
+		// MC Projection
+		if (minecraftModelViewMatrix == null)
+		{
+			throw new NullPointerException("No Minecraft Model View Matrix provided.");
+		}
+		ClientApi.RENDER_STATE.mcModelViewMatrix.set(minecraftModelViewMatrix);
+		
+		// MC MVM
+		if (minecraftProjectionMatrix == null)
+		{
+			throw new NullPointerException("No Minecraft Projection matrix provided.");
+		}
+		ClientApi.RENDER_STATE.mcProjectionMatrix.set(minecraftProjectionMatrix);
+		
+		// partial ticks
+		if (partialTickTime < 0)
+		{
+			throw new IllegalArgumentException("Partial ticks must be zero or greater.");
+		}
+		ClientApi.RENDER_STATE.partialTickTime = partialTickTime;
+		
+		// level
+		if (clientLevelWrapper == null)
+		{
+			throw new NullPointerException("No client level wrapper provided.");
+		}
+		else if (!(clientLevelWrapper instanceof IClientLevelWrapper))
+		{
+			throw new ClassCastException("DH expected a level wrapper of type ["+IClientLevelWrapper.class.getSimpleName()+"], but was provided a ["+clientLevelWrapper.getClass().getSimpleName()+"].");
+		}
+		ClientApi.RENDER_STATE.clientLevelWrapper = (IClientLevelWrapper)clientLevelWrapper;
+	}	
+	
+	//endregion
 	
 	
 	

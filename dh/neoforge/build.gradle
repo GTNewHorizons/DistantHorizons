@@ -17,7 +17,14 @@ def addMod(path, enabled) {
 
 dependencies {
     // Iris
-    addMod("maven.modrinth:iris:${rootProject.neo_iris_version}", rootProject.neo_enable_iris)
+    if (rootProject.mcVer != "26.3.0") // TODO remove once Iris has a stable release
+    {
+        addMod("maven.modrinth:iris:${rootProject.neo_iris_version}", rootProject.neo_enable_iris)
+    }
+    else
+    {
+        dependencies { compileOnly(files('../tempLibJars/iris-fabric-1.12.0-snapshot+mc26.3-local.jar')) }
+    }
     
     // Sodium
     addMod("maven.modrinth:sodium:${rootProject.neo_sodium_version}", rootProject.neo_enable_sodium)

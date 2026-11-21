@@ -19,11 +19,16 @@
 
 package com.seibel.distanthorizons.core.render.QuadTree;
 
+import com.seibel.distanthorizons.api.enums.rendering.EDhApiTerrainVertexFormat;
 import com.seibel.distanthorizons.api.enums.rendering.EDhApiTransparency;
+import com.seibel.distanthorizons.api.interfaces.render.renderDef.AbstractDhApiRenderDefinition;
 import com.seibel.distanthorizons.api.interfaces.render.renderDef.IDhApiDebugWireframeRenderer;
+import com.seibel.distanthorizons.coreapi.DependencyInjection.OverrideInjector;
 import com.seibel.distanthorizons.core.config.Config;
 import com.seibel.distanthorizons.core.dataObjects.fullData.sources.FullDataSourceV2;
 import com.seibel.distanthorizons.core.dataObjects.render.ColumnRenderSource;
+import com.seibel.distanthorizons.core.dataObjects.render.columnViews.ColumnRenderView;
+import com.seibel.distanthorizons.core.util.RenderDataPointUtil;
 import com.seibel.distanthorizons.core.dataObjects.render.bufferBuilding.ColumnRenderBufferBuilder;
 import com.seibel.distanthorizons.core.dataObjects.render.bufferBuilding.LodQuadBuilder;
 import com.seibel.distanthorizons.core.dataObjects.transformers.FullDataToRenderDataTransformer;
@@ -84,11 +89,11 @@ public class LodRenderSection implements IDebugRenderable, AutoCloseable
 	 * for cached render data caching purposes, but not
 	 * for re-creating missing nodes.
 	 */
-	public boolean renderDataDirty = false;
+	public volatile boolean renderDataDirty = false;
 	public boolean queuedMissingSectionsForRetrieval = false;
 	
 	/** this reference is necessary so we can determine what VBO to render */
-	public LodBufferContainer renderBufferContainer; 
+	public volatile LodBufferContainer renderBufferContainer;
 	
 	
 	/** 
@@ -186,13 +191,15 @@ public class LodRenderSection implements IDebugRenderable, AutoCloseable
 						// 3 because that's generally the max needed
 						PhantomArrayListCheckout opaqueCheckout = LodQuadBuilder.ARRAY_LIST_POOL.checkoutByteBuffers(3);
 						PhantomArrayListCheckout transparentCheckout = LodQuadBuilder.ARRAY_LIST_POOL.checkoutByteBuffers(3);
+						PhantomArrayListCheckout withoutSsaoCheckout = LodQuadBuilder.ARRAY_LIST_POOL.checkoutByteBuffers(3);
 						
 						// create CPU vertex buffers
 						ArrayList<ByteBuffer> opaqueBuffers = lodQuadBuilder.makeOpaqueVertexBuffers(opaqueCheckout);
 						ArrayList<ByteBuffer> transparentBuffers = lodQuadBuilder.makeTransparentVertexBuffers(transparentCheckout);
+						ArrayList<ByteBuffer> withoutSsaoBuffers = lodQuadBuilder.makeWithoutSsaoVertexBuffers(withoutSsaoCheckout);
 						
 						// uploading will primarily happen on the render thread
-						this.uploadToGpuAsync(future, opaqueBuffers, transparentBuffers)
+						this.uploadToGpuAsync(future, opaqueBuffers, transparentBuffers, withoutSsaoBuffers, lodQuadBuilder.getVertexFormat())
 							// Join is used to prevent queuing up potentially thousands of
 							// upload tasks (each requiring their own staging buffer)
 							// causing an explosion of pooled memory use.
@@ -203,6 +210,7 @@ public class LodRenderSection implements IDebugRenderable, AutoCloseable
 						{
 							opaqueCheckout.close();
 							transparentCheckout.close();
+							withoutSsaoCheckout.close();
 							
 							// the future is passed in separately (IE not using the local var) 
 							// to prevent any possible race condition null pointers
@@ -239,7 +247,9 @@ public class LodRenderSection implements IDebugRenderable, AutoCloseable
 	@Nullable
 	private synchronized LodQuadBuilder getAndBuildRenderData()
 	{
-		try (ColumnRenderSource thisRenderSource = this.getRenderSourceForPos(this.pos, null))
+		// one definition for the whole build
+		AbstractDhApiRenderDefinition renderDefinition = OverrideInjector.INSTANCE.get(AbstractDhApiRenderDefinition.class);
+		try (ColumnRenderSource thisRenderSource = this.getRenderSourceForPos(this.pos, null, renderDefinition))
 		{
 			if (thisRenderSource == null)
 			{
@@ -249,14 +259,18 @@ public class LodRenderSection implements IDebugRenderable, AutoCloseable
 			
 			
 			boolean enableTransparency = Config.Client.Advanced.Graphics.Quality.transparency.get() == EDhApiTransparency.COMPLETE;
-			LodQuadBuilder lodQuadBuilder = LodQuadBuilder.getBuilder(enableTransparency, this.clientLevelWrapper);
+			LodQuadBuilder lodQuadBuilder = LodQuadBuilder.getBuilder(enableTransparency, this.clientLevelWrapper, renderDefinition);
 			
 			
 			// get the adjacent positions
-			try (ColumnRenderSource northRenderSource = this.getRenderSourceForPos(this.pos, EDhDirection.NORTH);
-				ColumnRenderSource southRenderSource = this.getRenderSourceForPos(this.pos, EDhDirection.SOUTH);
-				ColumnRenderSource eastRenderSource = this.getRenderSourceForPos(this.pos, EDhDirection.EAST);
-				ColumnRenderSource westRenderSource = this.getRenderSourceForPos(this.pos, EDhDirection.WEST))
+			try (ColumnRenderSource northRenderSource = this.getRenderSourceForPos(this.pos, EDhDirection.NORTH, renderDefinition);
+				ColumnRenderSource southRenderSource = this.getRenderSourceForPos(this.pos, EDhDirection.SOUTH, renderDefinition);
+				ColumnRenderSource eastRenderSource = this.getRenderSourceForPos(this.pos, EDhDirection.EAST, renderDefinition);
+				ColumnRenderSource westRenderSource = this.getRenderSourceForPos(this.pos, EDhDirection.WEST, renderDefinition);
+				ColumnRenderSource northWestRenderSource = this.getDiagonalRenderSource(thisRenderSource, EDhDirection.NORTH, EDhDirection.WEST, renderDefinition);
+				ColumnRenderSource northEastRenderSource = this.getDiagonalRenderSource(thisRenderSource, EDhDirection.NORTH, EDhDirection.EAST, renderDefinition);
+				ColumnRenderSource southWestRenderSource = this.getDiagonalRenderSource(thisRenderSource, EDhDirection.SOUTH, EDhDirection.WEST, renderDefinition);
+				ColumnRenderSource southEastRenderSource = this.getDiagonalRenderSource(thisRenderSource, EDhDirection.SOUTH, EDhDirection.EAST, renderDefinition))
 			{
 				ColumnRenderSource[] adjacentRenderSections = new ColumnRenderSource[EDhDirection.CARDINAL_COMPASS.length];
 				adjacentRenderSections[EDhDirection.NORTH.compassIndex] = northRenderSource;
@@ -270,9 +284,16 @@ public class LodRenderSection implements IDebugRenderable, AutoCloseable
 				adjIsSameDetailLevel[EDhDirection.EAST.compassIndex] = this.isAdjacentPosSameDetailLevel(EDhDirection.EAST);
 				adjIsSameDetailLevel[EDhDirection.WEST.compassIndex] = this.isAdjacentPosSameDetailLevel(EDhDirection.WEST);
 
+				// [west, east][north, south]
+				ColumnRenderSource[][] diagonalRenderSections = new ColumnRenderSource[][]
+				{
+					{ northWestRenderSource, southWestRenderSource },
+					{ northEastRenderSource, southEastRenderSource } 
+				};
+				
 				// the render sources are only needed by this synchronous method,
 				// then they can be closed
-				ColumnRenderBufferBuilder.makeLodRenderData(lodQuadBuilder, thisRenderSource, this.clientLevelWrapper, adjacentRenderSections, adjIsSameDetailLevel);
+				ColumnRenderBufferBuilder.makeLodRenderData(lodQuadBuilder, thisRenderSource, this.clientLevelWrapper, renderDefinition, adjacentRenderSections, diagonalRenderSections, adjIsSameDetailLevel);
 				return lodQuadBuilder;
 			}
 			catch (Exception e)
@@ -291,7 +312,7 @@ public class LodRenderSection implements IDebugRenderable, AutoCloseable
 	 * async is done so each thread can run without waiting on others 
 	 * @param direction the direction to load relative to the given position, null will return the given position
 	 */
-	private ColumnRenderSource getRenderSourceForPos(long pos, @Nullable EDhDirection direction) 
+	private ColumnRenderSource getRenderSourceForPos(long pos, @Nullable EDhDirection direction, AbstractDhApiRenderDefinition renderDefinition) 
 	{
 		if (direction != null)
 		{
@@ -306,7 +327,7 @@ public class LodRenderSection implements IDebugRenderable, AutoCloseable
 				? this.fullDataSourceProvider.get(finalPos)
 				: this.fullDataSourceProvider.getAdjForDirection(finalPos, direction.opposite()))
 		{
-			ColumnRenderSource columnRenderSource = FullDataToRenderDataTransformer.transformFullDataToRenderSource(fullDataSource, this.clientLevelWrapper);
+			ColumnRenderSource columnRenderSource = FullDataToRenderDataTransformer.transformFullDataToRenderSource(fullDataSource, this.clientLevelWrapper, renderDefinition);
 			return columnRenderSource;
 		}
 		catch (Exception e)
@@ -314,6 +335,47 @@ public class LodRenderSection implements IDebugRenderable, AutoCloseable
 			LOGGER.error("Unexpected issue creating render data for pos: ["+DhSectionPos.toString(finalPos)+"], error: ["+e.getMessage()+"].", e);
 			return null;
 		}
+	}
+	/** Gets the render source diagonal from a sections position */
+	private ColumnRenderSource getDiagonalRenderSource(ColumnRenderSource thisRenderSource, EDhDirection northOrSouth, EDhDirection eastOrWest, AbstractDhApiRenderDefinition renderDefinition)
+	{
+		// fluid diagonals are only used at the block detail level
+		if (DhSectionPos.getDetailLevel(this.pos) != DhSectionPos.SECTION_BLOCK_DETAIL_LEVEL)
+		{
+			return null;
+		}
+		
+		int cornerX = (eastOrWest == EDhDirection.WEST) ? 0 : ColumnRenderSource.WIDTH - 1;
+		int cornerZ = (northOrSouth == EDhDirection.NORTH) ? 0 : ColumnRenderSource.WIDTH - 1;
+		if (!hasFluid(thisRenderSource, cornerX, cornerZ))
+		{
+			return null;
+		}
+		
+		long northOrSouthPos = DhSectionPos.getAdjacentPos(this.pos, northOrSouth);
+		return this.getRenderSourceForPos(northOrSouthPos, eastOrWest, renderDefinition);
+	}
+	private static boolean hasFluid(ColumnRenderSource renderSource, int relX, int relZ)
+	{
+		try (ColumnRenderView columnView = ColumnRenderView.getPooled())
+		{
+			renderSource.populateColumnView(columnView, relX, relZ);
+			for (int i = 0; i < columnView.size; i++)
+			{
+				long dataPoint = columnView.get(i);
+				if (!RenderDataPointUtil.doesDataPointExist(dataPoint)
+					|| RenderDataPointUtil.hasZeroHeight(dataPoint))
+				{
+					break;
+				}
+				
+				if (RenderDataPointUtil.isFluid(dataPoint))
+				{
+					return true;
+				}
+			}
+		}
+		return false;
 	}
 	private boolean isAdjacentPosSameDetailLevel(EDhDirection direction)
 	{
@@ -329,12 +391,16 @@ public class LodRenderSection implements IDebugRenderable, AutoCloseable
 	private synchronized CompletableFuture<LodBufferContainer> uploadToGpuAsync(
 		CompletableFuture<Void> parentFuture,
 		ArrayList<ByteBuffer> opaqueBuffers,
-		ArrayList<ByteBuffer> transparentBuffers)
+		ArrayList<ByteBuffer> transparentBuffers,
+		ArrayList<ByteBuffer> withoutSsaoBuffers,
+		EDhApiTerrainVertexFormat vertexFormat)
 	{
 		CompletableFuture<LodBufferContainer> uploadFuture = LodBufferContainer.tryMakeAndUploadBuffersAsync(
 			this.pos, this.clientLevelWrapper, 
 			opaqueBuffers, 
-			transparentBuffers);
+			transparentBuffers,
+			withoutSsaoBuffers,
+			vertexFormat);
 		uploadFuture.whenComplete((bufferContainer, e) ->
 		{
 			try
@@ -355,6 +421,20 @@ public class LodRenderSection implements IDebugRenderable, AutoCloseable
 					return;
 				}
 				
+				if (parentFuture.isCancelled()
+					// Should fix a bug where a renderer switch happens at just the wrong time.
+					|| bufferContainer.isIncompatibleWith(OverrideInjector.INSTANCE.get(AbstractDhApiRenderDefinition.class)))
+				{
+					// if the parent future was canceled that likely means
+					// this LodRenderSection was closed before this point,
+					// meaning this buffer will become homeless, 
+					// so we need to clean it up here
+					bufferContainer.close();
+					
+					this.renderDataDirty = true;
+					return;
+				}
+				
 				// close the old container
 				LodBufferContainer oldContainer = this.renderBufferContainer;
 				this.renderBufferContainer = bufferContainer.buffersUploaded ? bufferContainer : null;
@@ -365,16 +445,6 @@ public class LodRenderSection implements IDebugRenderable, AutoCloseable
 				
 				// upload complete
 				this.renderDataDirty = false;
-				
-				
-				if (parentFuture.isCancelled())
-				{
-					// if the parent future was canceled that likely means
-					// this LodRenderSection was closed before this point,
-					// meaning this buffer will become homeless, 
-					// so we need to clean it up here
-					bufferContainer.close();
-				}
 			}
 			catch (Exception finishEx)
 			{
@@ -498,9 +568,11 @@ public class LodRenderSection implements IDebugRenderable, AutoCloseable
 		
 		
 		this.setRenderingEnabled(false);
-		if (this.renderBufferContainer != null)
+		LodBufferContainer oldContainer = this.renderBufferContainer;
+		this.renderBufferContainer = null;
+		if (oldContainer != null)
 		{
-			this.renderBufferContainer.close();
+			oldContainer.close();
 		}
 		
 	}

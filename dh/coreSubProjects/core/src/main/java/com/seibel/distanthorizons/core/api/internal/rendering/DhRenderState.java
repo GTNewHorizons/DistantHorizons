@@ -89,4 +89,16 @@ public class DhRenderState
 	
 	
 	
+	//================//
+	// helper methods //
+	//================//
+	//region
+	
+	/** Called when the world is closed so the last rendered level can be garbage collected. */
+	public void clearLevelReferences() { this.clientLevelWrapper = null; }
+	
+	//endregion
+	
+	
+	
 }

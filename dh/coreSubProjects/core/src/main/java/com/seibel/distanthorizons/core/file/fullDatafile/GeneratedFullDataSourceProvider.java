@@ -40,6 +40,7 @@ import com.seibel.distanthorizons.core.pos.blockPos.DhBlockPos2D;
 import com.seibel.distanthorizons.core.render.renderer.IDebugRenderable;
 import com.seibel.distanthorizons.core.util.ExceptionUtil;
 import com.seibel.distanthorizons.core.util.LodUtil;
+import com.seibel.distanthorizons.core.util.WorldGenUtil;
 import it.unimi.dsi.fastutil.bytes.ByteArrayList;
 import it.unimi.dsi.fastutil.longs.LongArrayList;
 import org.jetbrains.annotations.NotNull;
@@ -343,14 +344,34 @@ public class GeneratedFullDataSourceProvider extends FullDataSourceProviderV2 im
 	public void clearRetrievalQueue() { this.worldGenQueueRef.set(null); }
 	
 	
-	public boolean generationStepsAreFullyGenerated(ByteArrayList columnGenerationSteps)
+	/** The step every column at this position needs to reach */
+	private EDhApiWorldGenerationStep getRequiredWorldGenStep(long pos)
 	{
+		EDhApiGeneratorPlan genPlan = this.getGeneratorPlan();
+		if (genPlan == EDhApiGeneratorPlan.SURFACE_ONLY)
+		{
+			return EDhApiWorldGenerationStep.SURFACE;
+		}
+		else if (genPlan.surfaceGenEnabled
+			&& DhSectionPos.getDetailLevel(pos) > DhSectionPos.SECTION_BLOCK_DETAIL_LEVEL)
+		{
+			return EDhApiWorldGenerationStep.SURFACE;
+		}
+		return EDhApiWorldGenerationStep.FEATURES;
+	}
+	
+	public boolean generationStepsAreFullyGenerated(long pos, ByteArrayList columnGenerationSteps)
+	{
+		// old LODs are generated again when chunks can be generated
+		boolean regenAllowed = WorldGenUtil.regenAllowed(this);
+		byte requiredStep = this.getRequiredWorldGenStep(pos).value;
 		return IntStream.range(0, columnGenerationSteps.size())
 			.noneMatch((int intValue) ->
 			{
 				byte value = columnGenerationSteps.getByte(intValue);
 				return value == EDhApiWorldGenerationStep.EMPTY.value
-					|| value == EDhApiWorldGenerationStep.DOWN_SAMPLED.value;
+					|| value == EDhApiWorldGenerationStep.DOWN_SAMPLED.value
+					|| (regenAllowed && value < requiredStep);
 			});
 	}
 	
@@ -365,21 +386,7 @@ public class GeneratedFullDataSourceProvider extends FullDataSourceProviderV2 im
 		}
 		
 		
-		EDhApiWorldGenerationStep requiredWorldGenStep;
-		EDhApiGeneratorPlan genPlan = this.getGeneratorPlan();
-		if (genPlan == EDhApiGeneratorPlan.SURFACE_ONLY)
-		{
-			requiredWorldGenStep = EDhApiWorldGenerationStep.SURFACE;
-		}
-		else if (genPlan.surfaceGenEnabled
-			&& DhSectionPos.getDetailLevel(pos) > DhSectionPos.SECTION_BLOCK_DETAIL_LEVEL)
-		{
-			requiredWorldGenStep = EDhApiWorldGenerationStep.SURFACE;
-		}
-		else
-		{
-			requiredWorldGenStep = EDhApiWorldGenerationStep.FEATURES;
-		}
+		EDhApiWorldGenerationStep requiredWorldGenStep = this.getRequiredWorldGenStep(pos);
 		
 		
 		

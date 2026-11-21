@@ -39,6 +39,11 @@ public interface IClientLevelWrapper extends ILevelWrapper
 	default int getBlockColor(DhBlockPos pos, IBiomeWrapper biome, FullDataSourceV2 fullDataSource, IBlockStateWrapper blockState) 
 	{ return this.getBlockColor(pos, biome, fullDataSource, blockState, true); }
 	int getBlockColor(DhBlockPos pos, IBiomeWrapper biome, FullDataSourceV2 fullDataSource, IBlockStateWrapper blockState, boolean allowApiOverride);
+	/** 
+	 * True if Minecraft tints this block by biome (leaves, grass, water) <br>
+	 * Needs to be handled here instead of {@link IBlockStateWrapper} due to needing texture information that only the client has access to.
+	 */
+	boolean getBlockNeedsPostTinting(IBlockStateWrapper blockState);
 	/** @return -1 if there was a problem getting the color */
 	int getDirtBlockColor();
 	void clearBlockColorCache();

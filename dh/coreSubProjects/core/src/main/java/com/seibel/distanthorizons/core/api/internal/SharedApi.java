@@ -25,7 +25,8 @@ import com.seibel.distanthorizons.core.api.internal.chunkUpdating.ChunkUpdateDat
 import com.seibel.distanthorizons.core.api.internal.chunkUpdating.ChunkUpdateQueueManager;
 import com.seibel.distanthorizons.core.api.internal.chunkUpdating.WorldChunkUpdateManager;
 import com.seibel.distanthorizons.core.config.eventHandlers.IgnoredDimensionCsvHandler;
-import com.seibel.distanthorizons.core.dataObjects.render.textures.BlockTextureRegistry;
+import com.seibel.distanthorizons.core.dataObjects.BlockBiomeWrapperPair;
+import com.seibel.distanthorizons.core.dataObjects.render.textures.BlockRenderRegistry;
 import com.seibel.distanthorizons.core.dependencyInjection.ModAccessorInjector;
 import com.seibel.distanthorizons.core.dependencyInjection.SingletonInjector;
 import com.seibel.distanthorizons.core.level.DhClientLevel;
@@ -39,6 +40,7 @@ import com.seibel.distanthorizons.core.sql.repo.AbstractDhRepo;
 import com.seibel.distanthorizons.core.util.objects.Pair;
 import com.seibel.distanthorizons.core.util.threading.ThreadPoolUtil;
 import com.seibel.distanthorizons.core.world.*;
+import com.seibel.distanthorizons.core.wrapperInterfaces.IWrapperFactory;
 import com.seibel.distanthorizons.core.wrapperInterfaces.chunk.IChunkWrapper;
 import com.seibel.distanthorizons.core.wrapperInterfaces.minecraft.IMinecraftRenderWrapper;
 import com.seibel.distanthorizons.core.wrapperInterfaces.modAccessor.IChunkyAccessor;
@@ -60,6 +62,7 @@ public class SharedApi
 	/** will be null on the server-side */
 	@Nullable
 	private static final IMinecraftRenderWrapper MC_RENDER = SingletonInjector.INSTANCE.get(IMinecraftRenderWrapper.class);
+	private static final IWrapperFactory WRAPPER_FACTORY = SingletonInjector.INSTANCE.get(IWrapperFactory.class);
 	
 	public static final WorldChunkUpdateManager WORLD_CHUNK_UPDATE_MANAGER = WorldChunkUpdateManager.INSTANCE; // local fariable for quick access
 	
@@ -132,8 +135,15 @@ public class SharedApi
 				WORLD_CHUNK_UPDATE_MANAGER.clear();
 				
 				RenderThreadTaskHandler.INSTANCE.clearDebugStats();
-				BlockTextureRegistry.INSTANCE.clear();
+				BlockRenderRegistry.INSTANCE.clear();
 				WorldGeneratorInjector.INSTANCE.clear();
+				
+				ClientApi.clearLevelReferences();
+				
+				// cache clearing is necessary for certain mods that need biomes (Polytone)
+				// generated specifically for this world
+				BlockBiomeWrapperPair.clearCache();
+				WRAPPER_FACTORY.clearBiomeWrapperCache();
 				
 				// recommend that the garbage collector cleans up any objects from the old world and thread pools
 				System.gc();

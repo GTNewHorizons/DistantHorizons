@@ -15,6 +15,7 @@
 
 package com.seibel.distanthorizons.forge17;
 
+import com.seibel.distanthorizons.common.util.DebugKeybindHandler;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.shader.Framebuffer;
 import net.minecraft.world.World;
@@ -40,6 +41,7 @@ import cpw.mods.fml.common.FMLCommonHandler;
 import cpw.mods.fml.common.eventhandler.SubscribeEvent;
 import cpw.mods.fml.common.gameevent.InputEvent;
 import cpw.mods.fml.common.gameevent.TickEvent;
+import org.lwjgl.input.Keyboard;
 
 /**
  * This handles all events sent to the client.
@@ -92,8 +94,8 @@ public class ForgeClientProxy implements AbstractModInitializer.IEventProxy
             }
 			
             Minecraft.getMinecraft()
-	            // add to render thread executor
-                .addScheduledTask(() -> 
+	            // add to render thread executor (addScheduledTask)
+                .func_152344_a(() ->
                 {
 	                World level = event.world;
                     Chunk chunk = level.getChunkFromBlockCoords(event.x, event.z);
@@ -140,8 +142,6 @@ public class ForgeClientProxy implements AbstractModInitializer.IEventProxy
 	@SubscribeEvent
 	public void registerKeyBindings(InputEvent.KeyInputEvent event)
 	{
-		// TODO: Verify and implement for 1.12.2 and older
-		/*
 		if (Minecraft.getMinecraft().thePlayer == null)
 		{
 			return;
@@ -153,7 +153,6 @@ public class ForgeClientProxy implements AbstractModInitializer.IEventProxy
 		}
 		
 		DebugKeybindHandler.onKeyPressed(Keyboard.getEventKey());
-		*/
 	}
 	
 	//endregion

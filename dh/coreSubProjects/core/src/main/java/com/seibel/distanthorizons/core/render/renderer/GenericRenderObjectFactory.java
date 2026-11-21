@@ -72,4 +72,6 @@ public class GenericRenderObjectFactory implements IDhApiCustomRenderObjectFacto
 	public IDhApiRenderableBoxGroup createAbsolutePositionedGroup(String resourceLocation, List<DhApiRenderableBox> boxList)
 	{ return new RenderableBoxGroup(resourceLocation, new DhApiVec3d(0, 0, 0), boxList, false); }
 	
+	
+	
 }

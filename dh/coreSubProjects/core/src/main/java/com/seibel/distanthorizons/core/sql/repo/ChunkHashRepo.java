@@ -21,15 +21,18 @@ package com.seibel.distanthorizons.core.sql.repo;
 
 import com.seibel.distanthorizons.core.logging.DhLoggerBuilder;
 import com.seibel.distanthorizons.core.pos.DhChunkPos;
+import com.seibel.distanthorizons.core.sql.DbConnectionClosedException;
 import com.seibel.distanthorizons.core.sql.dto.ChunkHashDTO;
 import com.seibel.distanthorizons.core.logging.DhLogger;
 import org.jetbrains.annotations.Nullable;
 
 import java.io.File;
 import java.io.IOException;
+import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
+import java.util.Map;
 
 public class ChunkHashRepo extends AbstractDhRepo<DhChunkPos, ChunkHashDTO>
 {
@@ -119,6 +122,52 @@ public class ChunkHashRepo extends AbstractDhRepo<DhChunkPos, ChunkHashDTO>
 		statement.setObject(i++, System.currentTimeMillis()); // created unix time
 		
 		return statement;
+	}
+	
+	/** Upserts all hashes as one batch in a single transaction, much faster than {@link #save} per chunk. */
+	public void saveAll(Map<DhChunkPos, Integer> chunkHashByPos)
+	{
+		try (PreparedStatement statement = this.createPreparedStatement(this.upsertSqlTemplate))
+		{
+			if (statement == null)
+			{
+				// repo closed
+				return;
+			}
+			
+			long unixTime = System.currentTimeMillis();
+			for (Map.Entry<DhChunkPos, Integer> entry : chunkHashByPos.entrySet())
+			{
+				int i = 1;
+				statement.setObject(i++, entry.getKey().getX());
+				statement.setObject(i++, entry.getKey().getZ());
+				statement.setObject(i++, entry.getValue());
+				statement.setObject(i++, unixTime); // last modified unix time
+				statement.setObject(i++, unixTime); // created unix time
+				statement.addBatch();
+			}
+			
+			// connections are per thread, so no other statements end up in this transaction
+			Connection dbConnection = statement.getConnection();
+			dbConnection.setAutoCommit(false);
+			try
+			{
+				statement.executeBatch();
+				dbConnection.commit();
+			}
+			finally
+			{
+				dbConnection.rollback(); // no-op after a successful commit
+				dbConnection.setAutoCommit(true);
+			}
+		}
+		catch (SQLException e)
+		{
+			if (!DbConnectionClosedException.isClosedException(e))
+			{
+				LOGGER.error("Unexpected error saving ["+chunkHashByPos.size()+"] chunk hashes, error: ["+e.getMessage()+"].", e);
+			}
+		}
 	}
 	
 	

@@ -158,13 +158,8 @@ public class LodDataBuilder
 					byte blockLight = LodUtil.MIN_MC_LIGHT;
 					byte skyLight = LodUtil.MAX_MC_LIGHT;
 					
-					// Get the maximum height from both heightmaps
-					int y = Math.max(
-							// max between both heightmaps to account for solid invisible blocks (glass)
-							// and non-solid opaque blocks (at one point this was stairs, not sure what would fit this now)
-							chunkWrapper.getLightBlockingHeightMapValue(relBlockX, relBlockZ),
-							chunkWrapper.getSolidHeightMapValue(relBlockX, relBlockZ)
-					);
+					// start at the highest block of any kind
+					int y = chunkWrapper.getNonAirHeightMapValue(relBlockX, relBlockZ);
 					
 					// Go up until we reach open air or the world limit
 					IBlockStateWrapper topBlockState = previousBlockState = chunkWrapper.getBlockState(relBlockX, y, relBlockZ, mcBlockPos, previousBlockState);

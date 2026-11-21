@@ -28,6 +28,7 @@ import com.seibel.distanthorizons.common.wrappers.minecraft.MinecraftGLWrapper;
 import com.seibel.distanthorizons.core.render.RenderParam;
 import com.seibel.distanthorizons.core.util.math.DhMat4f;
 import com.seibel.distanthorizons.core.util.math.DhVec3d;
+import com.seibel.distanthorizons.lwjgl.GL33;
 import org.lwjgl.opengl.GL13;
 import org.lwjgl.opengl.GL30;
 
@@ -210,8 +211,19 @@ public class GlDhTaaShader extends GlAbstractShaderRenderer
 		GLMC.glBindTexture(this.historyColorTextureId);
 		LWJGL.glUniform1i(this.uHistoryColorSampler, 2);
 		
+		// Sampler objects override texture filters, meaning we may get the wrong sampling type.
+		// this is necessary due to some MC versions/mods setting a different sampler than what we want.
+		int previousSampler = LWJGL.glGetInteger(GL33.GL_SAMPLER_BINDING);
+		LWJGL.glBindSampler(2, 0);
+		
+		
 		GlScreenQuad.INSTANCE.render();
+		
+		
+		// revert the sample so any MC/mods can use the sampler they set
+		LWJGL.glBindSampler(2, previousSampler);
 	}
+		
 	
 	//endregion
 	

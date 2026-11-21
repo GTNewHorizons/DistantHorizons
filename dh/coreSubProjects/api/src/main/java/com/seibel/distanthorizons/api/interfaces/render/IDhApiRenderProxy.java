@@ -26,8 +26,10 @@ import com.seibel.distanthorizons.api.enums.config.EDhApiRenderingEngine;
 import com.seibel.distanthorizons.api.interfaces.config.IDhApiConfigValue;
 import com.seibel.distanthorizons.api.interfaces.render.renderDef.AbstractDhApiRenderDefinition;
 import com.seibel.distanthorizons.api.interfaces.world.IDhApiLevelWrapper;
+import com.seibel.distanthorizons.api.interfaces.world.IDhApiWorldProxy;
 import com.seibel.distanthorizons.api.methods.events.abstractEvents.DhApiAfterDhInitEvent;
 import com.seibel.distanthorizons.api.objects.DhApiResult;
+import com.seibel.distanthorizons.api.objects.math.DhApiMat4f;
 
 import java.util.concurrent.CompletableFuture;
 
@@ -36,11 +38,16 @@ import java.util.concurrent.CompletableFuture;
  * Used to interact with Distant Horizons' rendering system.
  *
  * @author James Seibel
- * @version 2024-7-27
+ * @version 2026-11-01
  * @since API 1.0.0
  */
 public interface IDhApiRenderProxy
 {
+	//==============//
+	// render cache //
+	//==============//
+	//region
+	
 	/**
 	 * Forces any cached render data to be deleted and regenerated.
 	 * This is generally called whenever resource packs are changed or specific
@@ -70,6 +77,15 @@ public interface IDhApiRenderProxy
 	 * @since API 7.3.0
 	 */
 	DhApiResult<Boolean> reloadRenderDataCache();
+	
+	//endregion
+	
+	
+	
+	//=========//
+	// getters //
+	//=========//
+	//region
 	
 	/**
 	 * Returns which specific {@link EDhApiRenderingApi}
@@ -129,6 +145,8 @@ public interface IDhApiRenderProxy
 	 * @since API 7.2.0
 	 */
 	EDhApiDepthDirection getDepthDirection() throws IllegalStateException;
+	
+	//endregion
 	
 	
 	
@@ -271,6 +289,76 @@ public interface IDhApiRenderProxy
 	
 	/** This may change based on FOV, player speed, and other factors. */
 	float getNearClipPlaneDistanceInBlocks(float partialTicks);
+	
+	//endregion
+	
+	
+	
+	//=======================//
+	// Manual Render Trigger //
+	//=======================//
+	//region
+	
+	/**
+	 * If set to true DH will attempt to render automatically using its own
+	 * injection/mixin/event points.
+	 * If set to false DH will not render unless it is manually triggered via {@link #renderLodPass}. <br><br>
+	 * 
+	 * Designed to be used alongside {@link #renderLodPass} and {@link #renderVanillaFadePass}
+	 * to allow for custom DH render handling, although it doesn't have to be set if you want to add additional
+	 * render passes outside of DH's base render injection points.
+	 * 
+	 * @since API 7.3.0
+	 */
+	void setUseDhRenderInjections(boolean useDhRenderInjections);
+	/**
+	 * @see #setUseDhRenderInjections(boolean) 
+	 * @since API 7.3.0
+	 */
+	boolean getUseDhRenderInjections();
+	
+	/**
+	 * Triggers a DH render pass. <Br>
+	 * This includes all DH terrain, generic objects (clouds, beacons, etc.), and post-processing on said DH rendering.
+	 * 
+	 * @param minecraftModelViewMatrix Minecraft's Model View matrix used for this frame/render pass
+	 * @param minecraftProjectionMatrix Minecraft's Projection matrix used for this frame/render pass
+	 * @param partialTickTime the current partial ticks for this frame/render pass
+	 * @param clientLevelWrapper the level DH is going to render, 
+	 *                           recommended to be used alongside {@link IDhApiWorldProxy#getSinglePlayerLevel}
+	 * @param deferredLayer if DH is set to render deferred this controls whether the current pass is the opaque/combined pass or just the transparent/deferred pass
+	 *
+	 * @exception RuntimeException if any of the provided arguments are invalid
+	 * 
+	 * @since API 7.3.0
+	 */
+	void renderLodPass(
+		DhApiMat4f minecraftModelViewMatrix, DhApiMat4f minecraftProjectionMatrix,
+		float partialTickTime,
+		IDhApiLevelWrapper clientLevelWrapper,
+		boolean deferredLayer
+	) throws RuntimeException;
+	
+	/**
+	 * Triggers DH's vanilla fade render pass (the fading between the DH and vanilla rendering).
+	 * 
+	 * @param minecraftModelViewMatrix Minecraft's Model View matrix used for this frame/render pass
+	 * @param minecraftProjectionMatrix Minecraft's Projection matrix used for this frame/render pass
+	 * @param partialTickTime the current partial ticks for this frame/render pass
+	 * @param clientLevelWrapper the level DH is going to render,
+	 *                          recommended to be used alongside {@link IDhApiWorldProxy#getSinglePlayerLevel}
+	 * @param transparentPass if true this 
+	 * 
+	 * @exception RuntimeException if any of the provided arguments are invalid
+	 * 
+	 * @since API 7.3.0
+	 */
+	void renderVanillaFadePass(
+		DhApiMat4f minecraftModelViewMatrix, DhApiMat4f minecraftProjectionMatrix,
+		float partialTickTime,
+		IDhApiLevelWrapper clientLevelWrapper,
+		boolean transparentPass
+	) throws RuntimeException;
 	
 	//endregion
 	

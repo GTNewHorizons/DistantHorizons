@@ -51,6 +51,7 @@ public class MixinRenderGlobal
 	
 	@Inject(
 		method = "sortAndRender",
+		require = 0, expect = 0, // enableLightmap is only called here in Angelica's overwrite
 		at = @At(
 			value = "INVOKE",
 			target = "Lnet/minecraft/client/renderer/EntityRenderer;enableLightmap(D)V",

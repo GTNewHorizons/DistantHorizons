@@ -103,8 +103,7 @@ public class ForgeServerProxy implements AbstractModInitializer.IEventProxy
     {
 		if (GetEventLevel(event) instanceof WorldServer)
 	    {
-			// Make new server level wrapper so it's not cached...
-			ServerApi.INSTANCE.serverLevelUnloadEvent(new ServerLevelWrapper((WorldServer) GetEventLevel(event)));
+			ServerApi.INSTANCE.serverLevelUnloadEvent(getServerLevelWrapper((WorldServer) GetEventLevel(event)));
 		}
 	}
 
@@ -120,7 +119,7 @@ public class ForgeServerProxy implements AbstractModInitializer.IEventProxy
 		ILevelWrapper levelWrapper = ProxyUtil.getLevelWrapper(GetEventLevel(event));
 		ChunkWrapper chunkWrapper = new ChunkWrapper(chunk, levelWrapper);
 		// Only handle event if chunk is ready, otherwise drop the update - we'll get it later during save
-		if (!chunk.isTerrainPopulated || !chunk.isLightPopulated)
+		if (!ChunkWrapper.canSaveChunk(chunk))
 	    {
 			return;
 		}
@@ -160,15 +159,6 @@ public class ForgeServerProxy implements AbstractModInitializer.IEventProxy
 	}
 
     @SubscribeEvent
-    public void playerChangedDimensionEvent(PlayerEvent.PlayerChangedDimensionEvent event) 
-    {
-        ServerApi.INSTANCE.serverPlayerLevelChangeEvent(
-            getServerPlayerWrapper(event),
-            getServerLevelWrapper(event.fromDim, event),
-            getServerLevelWrapper(event.toDim, event));
-    }
-
-    @SubscribeEvent
 	public void clickBlockEvent(PlayerInteractEvent event)
     {
 		ILevelWrapper wrappedLevel = ProxyUtil.getLevelWrapper(event.world);
@@ -199,14 +189,6 @@ public class ForgeServerProxy implements AbstractModInitializer.IEventProxy
 	
 	private static IServerLevelWrapper getServerLevelWrapper(WorldServer level) 
     { return ServerLevelWrapper.getWrapper(level); }
-	
-    private static IServerLevelWrapper getServerLevelWrapper(int dim, PlayerEvent event) 
-    {
-        WorldServer world = (WorldServer) event.player.worldObj;
-        WorldServer worldDim = world.func_73046_m()
-            .worldServerForDimension(dim);
-        return getServerLevelWrapper(worldDim);
-    }
 	
     private static IServerPlayerWrapper getServerPlayerWrapper(PlayerEvent event) 
     { return ServerPlayerWrapper.getWrapper((EntityPlayerMP) event.player); }

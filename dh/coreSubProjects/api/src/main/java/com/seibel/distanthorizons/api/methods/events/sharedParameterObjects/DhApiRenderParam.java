@@ -81,6 +81,19 @@ public class DhApiRenderParam implements IDhApiEventParam
 	 */
 	public AbstractDhApiRenderDefinition renderDefinition;
 	
+	/**
+	 * This will generally be true if the player is: <br>
+	 * - blinded <br>
+	 * - under lava/water <br>
+	 * <br>
+	 * In those cases some rendering logic may need to be changed
+	 * to look correct.
+	 * 
+	 * @since API 7.3.0
+	 */
+	// @see DhRenderState#vanillaFogEnabled
+	public boolean vanillaFogEnabled;
+	
 	
 	
 	//==============//
@@ -100,7 +113,8 @@ public class DhApiRenderParam implements IDhApiEventParam
 			param.mcProjectionMatrix, param.mcModelViewMatrix,
 			param.dhProjectionMatrix, param.mcModelViewMatrix, 
 			param.worldYOffset,
-			param.clientLevelWrapper
+			param.clientLevelWrapper,
+			param.vanillaFogEnabled
 		);
 	}
 	/** Internal DH method */
@@ -111,7 +125,8 @@ public class DhApiRenderParam implements IDhApiEventParam
 			DhApiMat4f newMcProjectionMatrix, DhApiMat4f newMcModelViewMatrix,
 			DhApiMat4f newDhProjectionMatrix, DhApiMat4f newDhModelViewMatrix,
 			int worldYOffset,
-			IDhApiLevelWrapper clientLevelWrapper
+			IDhApiLevelWrapper clientLevelWrapper,
+			boolean vanillaFogEnabled
 		)
 	{
 		this.renderDefinition = renderDefinition;
@@ -150,7 +165,26 @@ public class DhApiRenderParam implements IDhApiEventParam
 		this.worldYOffset = worldYOffset;
 		this.clientLevelWrapper = clientLevelWrapper;
 		
+		this.vanillaFogEnabled = vanillaFogEnabled;
+		
 	}
+	
+	//endregion
+	
+	
+	
+	//================//
+	// helper methods //
+	//================//
+	//region
+	
+	/** 
+	 * Internal DH method <Br><Br>
+	 * 
+	 * Clearing the level reference is necessary so the level 
+	 * can be garbage collected once the world closes.
+	 */
+	public void clearLevelReferences() { this.clientLevelWrapper = null; }
 	
 	//endregion
 	

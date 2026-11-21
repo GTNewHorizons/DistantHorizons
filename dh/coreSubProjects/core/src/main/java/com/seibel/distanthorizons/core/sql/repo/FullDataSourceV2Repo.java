@@ -571,7 +571,7 @@ public class FullDataSourceV2Repo extends AbstractDhRepo<Long, FullDataSourceV2D
 	
 	
 	private final String getColumnGenerationStepSql =
-			"select ColumnGenerationStep, CompressionMode " +
+			"select ColumnGenerationStep, CompressionMode, DataFormatVersion " +
 			"from "+this.getTableName()+" " +
 			"WHERE DetailLevel = ? AND PosX = ? AND PosZ = ?";
 	/** @return null if nothing exists for this position */
@@ -605,6 +605,7 @@ public class FullDataSourceV2Repo extends AbstractDhRepo<Long, FullDataSourceV2D
 				
 				byte compressionModeEnumValue = result.getByte("CompressionMode");
 				EDhApiDataCompressionMode compressionModeEnum = EDhApiDataCompressionMode.getFromValue(compressionModeEnumValue);
+				byte dataFormatVersion = result.getByte("DataFormatVersion");
 				
 				// decompress the data
 				try
@@ -616,6 +617,7 @@ public class FullDataSourceV2Repo extends AbstractDhRepo<Long, FullDataSourceV2D
 					{
 						putAllBytes(compressedIn, outputByteArray);
 					}
+					FullDataSourceV2DTO.convertOldGenerationSteps(outputByteArray, dataFormatVersion);
 				}
 				catch (IOException e)
 				{

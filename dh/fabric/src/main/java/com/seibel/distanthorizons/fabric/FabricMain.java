@@ -21,12 +21,14 @@ package com.seibel.distanthorizons.fabric;
 
 import com.mojang.brigadier.CommandDispatcher;
 import com.seibel.distanthorizons.common.AbstractModInitializer;
+import com.seibel.distanthorizons.common.wrappers.minecraft.AbstractMinecraftSharedWrapper;
 import com.seibel.distanthorizons.core.config.Config;
 import com.seibel.distanthorizons.core.dependencyInjection.ModAccessorInjector;
 import com.seibel.distanthorizons.core.dependencyInjection.SingletonInjector;
 import com.seibel.distanthorizons.core.logging.DhLoggerBuilder;
 import com.seibel.distanthorizons.common.wrappers.gui.NativeDialogUtil;
 import com.seibel.distanthorizons.core.wrapperInterfaces.minecraft.IMinecraftClientWrapper;
+import com.seibel.distanthorizons.core.wrapperInterfaces.minecraft.IMinecraftSharedWrapper;
 import com.seibel.distanthorizons.core.wrapperInterfaces.misc.IPluginPacketSender;
 import com.seibel.distanthorizons.core.wrapperInterfaces.modAccessor.*;
 import com.seibel.distanthorizons.coreapi.ModInfo;
@@ -92,23 +94,29 @@ public class FabricMain extends AbstractModInitializer implements ClientModIniti
 	@Override
 	protected void initializeModCompat()
 	{
-		IModChecker modChecker = SingletonInjector.INSTANCE.get(IModChecker.class);
-		if (modChecker.isModLoaded("sodium"))
+		// Somehow someone installed Sodium on their server, causing the server to die.
+		// Granted this check should only be done on the client anyway, sooooo...
+		IMinecraftSharedWrapper mcShared = SingletonInjector.INSTANCE.get(IMinecraftSharedWrapper.class);
+		if (!mcShared.isDedicatedServer())
 		{
-			ModAccessorInjector.INSTANCE.bind(ISodiumAccessor.class, new SodiumAccessor());
-			
-			// If sodium is installed Indium is also necessary for versions 0.5 and less in order to use the Fabric rendering API
-			if (!modChecker.isModLoaded("indium") && SodiumAccessor.isSodiumV5OrLess)
+			IModChecker modChecker = SingletonInjector.INSTANCE.get(IModChecker.class);
+			if (modChecker.isModLoaded("sodium"))
 			{
-				String indiumMissingMessage = ModInfo.READABLE_NAME + " needs Indium to work with Sodium.\nPlease download Indium from https://modrinth.com/mod/indium";
-				LOGGER.fatal(indiumMissingMessage);
+				ModAccessorInjector.INSTANCE.bind(ISodiumAccessor.class, new SodiumAccessor());
 				
-				NativeDialogUtil.showDialog(ModInfo.READABLE_NAME, indiumMissingMessage, "ok", "error");
-				
-				IMinecraftClientWrapper mc = SingletonInjector.INSTANCE.get(IMinecraftClientWrapper.class);
-				String errorMessage = "loading Distant Horizons. Distant Horizons requires Indium in order to run with Sodium.";
-				String exceptionError = "Distant Horizons conditional mod Exception";
-				mc.crashMinecraft(errorMessage, new Exception(exceptionError));
+				// If sodium is installed Indium is also necessary for versions 0.5 and less in order to use the Fabric rendering API
+				if (!modChecker.isModLoaded("indium") && SodiumAccessor.isSodiumV5OrLess)
+				{
+					String indiumMissingMessage = ModInfo.READABLE_NAME + " needs Indium to work with Sodium.\nPlease download Indium from https://modrinth.com/mod/indium";
+					LOGGER.fatal(indiumMissingMessage);
+					
+					NativeDialogUtil.showDialog(ModInfo.READABLE_NAME, indiumMissingMessage, "ok", "error");
+					
+					IMinecraftClientWrapper mc = SingletonInjector.INSTANCE.get(IMinecraftClientWrapper.class);
+					String errorMessage = "loading Distant Horizons. Distant Horizons requires Indium in order to run with Sodium.";
+					String exceptionError = "Distant Horizons conditional mod Exception";
+					mc.crashMinecraft(errorMessage, new Exception(exceptionError));
+				}
 			}
 		}
 		

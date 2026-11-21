@@ -18,7 +18,7 @@
  */
 
 package com.seibel.distanthorizons.common.wrappers.modAccessor;
-import com.seibel.distanthorizons.core.wrapperInterfaces.modAccessor.IRpleAccessor;
+import com.seibel.distanthorizons.core.wrapperInterfaces.modAccessor.IModAccessor;
 #if MC_VER == MC_1_7_10
 import net.minecraft.block.Block;
 #endif
@@ -29,9 +29,13 @@ import net.minecraft.block.Block;
  * 
  * The common Accessor allows for MC
  * version specific methods, vs the base accessor
- * which is for MC agnostic methods.
+ * which is for MC agnostic methods. <br><br>
+ * 
+ * Doesn't extend {@link com.seibel.distanthorizons.core.wrapperInterfaces.modAccessor.IRpleAccessor}
+ * since that one only contains client methods,
+ * this one is also available on dedicated servers.
  */
-public interface IRpleCommonAccessor extends IRpleAccessor
+public interface IRpleCommonAccessor extends IModAccessor
 {
 	#if MC_VER == MC_1_7_10
 	int getColor(Block block, int meta);

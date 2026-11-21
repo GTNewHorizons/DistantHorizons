@@ -4,6 +4,10 @@ in uvec4 vPosition;
 in vec4 color;
 // x: iris material id, y: face normal index, zw: block texture tile id (little endian)
 in uvec4 irisData;
+// xyz: offset inside the block in 256ths, w: flags, see EDhApiTerrainVertexFormat
+in uvec4 offsetData;
+// xy: model texture position, zw: normal, see EDhApiTerrainVertexFormat
+in uvec4 uvNormal;
 
 out vec4 vPos;
 out vec4 vertexColor;
@@ -13,8 +17,11 @@ out float vertexYPos;
 out vec3 vBlockPos;
 flat out uint vNormalIndex;
 flat out uint vTextureTileId;
+out vec2 vModelUv;
+flat out uint vUsesModelUv;
 
 uniform bool uIsWhiteWorld;
+uniform bool uHasOffsetData;
 
 uniform mat4 uCombinedMatrix;
 uniform vec3 uModelOffset;
@@ -28,6 +35,9 @@ uniform float uEarthRadius;
 uniform float uFrameMod8;
 uniform float uViewWidth;
 uniform float uViewHeight;
+
+// fraction of their distance flat models are pulled toward the camera
+const float FLAT_MODEL_PULL = 0.001;
 
 
 vec2 jitterOffsets[8] = vec2[8](
@@ -59,15 +69,30 @@ vec2 TAAJitter(vec2 coord, float w)
  */
 void main()
 {
-    vPos = vPosition; // This is so it can be passed to the fragment shader
+    vec3 position = vec3(vPosition.xyz);
+    vModelUv = vec2(0.0);
+    vUsesModelUv = 0u;
+    if (uHasOffsetData)
+    {
+        position += vec3(offsetData.xyz) / 256.0;
+        // model positions are signed
+        if ((offsetData.w & 1u) != 0u)
+        {
+            position -= vec3(greaterThan(vPosition.xyz, uvec3(32767u))) * 65536.0;
+        }
+        vModelUv = vec2(uvNormal.xy) / 255.0;
+        vUsesModelUv = offsetData.w & 1u;
+    }
     
-    vBlockPos = vec3(vPosition.xyz);
+    vPos = vec4(position, vPosition.a); // This is so it can be passed to the fragment shader
+    
+    vBlockPos = position;
     vNormalIndex = irisData.y;
     vTextureTileId = irisData.z | (irisData.w << 8u);
     
-    vertexWorldPos = vPosition.xyz + uModelOffset;
+    vertexWorldPos = position + uModelOffset;
     
-    vertexYPos = vPosition.y + uWorldYOffset;
+    vertexYPos = position.y + uWorldYOffset;
     
     uint meta = vPosition.a;
     
@@ -105,6 +130,12 @@ void main()
     if (!uIsWhiteWorld)
     {
         vertexColor *= color;
+    }
+    
+    // keeps flat models from z-fighting with the block behind them
+    if (uHasOffsetData && (offsetData.w & 2u) != 0u)
+    {
+        vertexWorldPos *= 1.0 - FLAT_MODEL_PULL;
     }
     
     gl_Position = uCombinedMatrix * vec4(vertexWorldPos, 1.0);
