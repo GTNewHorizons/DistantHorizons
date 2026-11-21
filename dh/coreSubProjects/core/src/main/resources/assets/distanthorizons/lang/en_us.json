@@ -341,6 +341,23 @@
     "A comma separated list of block resource locations \nthat DH will use rasterization to determine \nthe face textures.\n\nCan be used to fix issues with mods/blocks where \na side uses just part of a modeled block's texture. \n\nExample: \"minecraft:beacon\" \n\nChanges require a restart.",
     
     
+  "distanthorizons.config.client.advanced.graphics.model":
+    "LOD Models",
+
+  "distanthorizons.config.client.advanced.graphics.model.enableBlockModels":
+    "Enable LOD Models",
+  "distanthorizons.config.client.advanced.graphics.model.enableBlockModels.@tooltip":
+    "If true nearby LODs will render blocks with their real shape \ninstead of full cubes. \nIf false all LODs render as full cubes. \n\nOnly applies to the highest detail LODs.",
+  "distanthorizons.config.client.advanced.graphics.model.enableNonCollidingBlockModels":
+    "Render Models Without Collision",
+  "distanthorizons.config.client.advanced.graphics.model.enableNonCollidingBlockModels.@tooltip":
+    "If true blocks without collision (plants, flowers) \nalso render with their block model. \n\nTurned off when LOD block models are turned off.",
+  "distanthorizons.config.client.advanced.graphics.model.blocksDontRenderModelCsv":
+    "Blocks Don't Render Models",
+  "distanthorizons.config.client.advanced.graphics.model.blocksDontRenderModelCsv.@tooltip":
+    "A comma separated list of block resource locations \nthat DH won't render with their model. \nPartial matches/incomplete resource locations will also match. \n\nExample: \"minecraft:oak_fence,stairs\" \n\nChanges require a restart.",
+    
+    
   
   "distanthorizons.config.client.advanced.graphics.noiseTexture":
     "Noise Texture",
@@ -410,11 +427,11 @@
   "distanthorizons.config.client.advanced.graphics.culling.waterSurfaceBlockReplacementCsv":
     "Water Surface Replacement",
   "distanthorizons.config.client.advanced.graphics.culling.waterSurfaceBlockReplacementCsv.@tooltip":
-    "A comma separated list of block resource locations that will be removed \nwhen on top of water.",
+    "A comma separated list of block resource locations that will be removed \nwhen on top of water. \nBlocks drawn with their block model aren't removed.",
   "distanthorizons.config.client.advanced.graphics.culling.blocksToIgnore":
     "Blocks To Ignore",
   "distanthorizons.config.client.advanced.graphics.culling.blocksToIgnore.@tooltip":
-    "Defines what blocks should be rendered as LODs. \n\n§NONE:§r Include all blocks in the LODs\n§NON_COLLIDING:§r Only render solid blocks in the LODs (tall grass, torches, etc. will be ignored)",
+    "Defines what blocks should be rendered as LODs. \n\n§6NONE:§r Include all blocks in the LODs\n§6NON_COLLIDING:§r Only render solid blocks in the LODs (tall grass, torches, etc. will be ignored)\n\nBlocks drawn with their block model aren't ignored, \nplants drawn as models are set by \"Render Models Without Collision\".",
   "distanthorizons.config.client.advanced.graphics.culling.tintWithAvoidedBlocks":
     "Tint With Avoided Blocks",
   "distanthorizons.config.client.advanced.graphics.culling.tintWithAvoidedBlocks.@tooltip":
@@ -1141,6 +1158,8 @@
     "Fade To Dirt",
   "distanthorizons.config.enum.EDhApiGrassSideRendering.AS_DIRT":
     "As Dirt",
+  "distanthorizons.config.enum.EDhApiGrassSideRendering.GRASS_TOP_BLOCK":
+    "Grass Top Block",
 
   "distanthorizons.config.enum.EDhApiRenderingEngine.AUTO":
     "Auto",

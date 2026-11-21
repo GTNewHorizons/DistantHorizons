@@ -59,8 +59,10 @@ public class PositionalLockProvider
 				lock = new ExpiringLock();
 			}
 			
+			// try cleaning up any expired locks on a separate thread
+			// if the thread isn't already running
 			if (this.lockByPos.size() > MAX_NUMBER_OF_LOCKS
-				&& this.lockRemovalThreadRunning.getAndSet(true))
+				&& !this.lockRemovalThreadRunning.getAndSet(true))
 			{
 				LOCK_CLEANUP_THREAD.execute(this::removeExpiredLocks);
 			}
@@ -72,7 +74,8 @@ public class PositionalLockProvider
 	{
 		try
 		{
-			// we don't need to trigger this every time the lock count is over the limit
+			// sleep to limit how often this thread actually runs,
+			// since we don't need to actually have this run constantly/immediately
 			Thread.sleep(CLEANUP_THREAD_MAX_FREQUENCY_IN_MS);
 			
 			// walk over every lock and check which ones need to be removed
@@ -94,7 +97,7 @@ public class PositionalLockProvider
 							this.lockByPos.remove(pos);
 							//LOGGER.info("removed lock: "+DhSectionPos.toString(pos));
 						}
-						lock.unlock();
+						lock.unlockWithoutUpdatingExpirationTime();
 					}
 					
 				}
@@ -180,6 +183,9 @@ public class PositionalLockProvider
 		}
 		
 		public boolean tryLockWithoutUpdatingExpirationTime() { return super.tryLock(); }
+		
+		public void unlockWithoutUpdatingExpirationTime() { super.unlock(); }
+		
 		
 		
 	}

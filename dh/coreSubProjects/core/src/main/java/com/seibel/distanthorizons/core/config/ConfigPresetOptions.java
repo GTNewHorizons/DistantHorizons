@@ -23,6 +23,7 @@ import com.seibel.distanthorizons.core.config.types.ConfigEntry;
 
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.Objects;
 
 public class ConfigPresetOptions<TQuickEnum, TConfig>
 {
@@ -51,7 +52,15 @@ public class ConfigPresetOptions<TQuickEnum, TConfig>
 	public void updateConfigEntry(TQuickEnum quickQuality)
 	{
 		TConfig newValue = this.configOptionByQualityOption.get(quickQuality);
-		this.configEntry.set(newValue);
+		
+		// Only trigger a set if the value was actually changed.
+		// This is done to prevent firing listeners for unchanged values.
+		// This is specifically important to prevent reloading LODs unnecessarily 
+		// when changing something in the quality preset.
+		if (!Objects.equals(this.configEntry.getTrueValue(), newValue))
+		{
+			this.configEntry.set(newValue);
+		}
 	}
 	
 	public HashSet<TQuickEnum> getPossibleQualitiesFromCurrentOptionValue()

@@ -151,6 +151,8 @@ public class Config
 				
 				public static ConfigUiLinkedEntry quickEnableTexturedLods = new ConfigUiLinkedEntry(Texture.enableTexturedLods);
 				public static ConfigCategory texture = new ConfigCategory.Builder().set(Texture.class).build();
+				public static ConfigUiLinkedEntry quickEnableBlockModels = new ConfigUiLinkedEntry(Model.enableBlockModels);
+				public static ConfigCategory model = new ConfigCategory.Builder().set(Model.class).build();
 				public static ConfigUiLinkedEntry quickEnableNoiseTexture = new ConfigUiLinkedEntry(NoiseTexture.enableNoiseTexture);
 				public static ConfigCategory noiseTexture = new ConfigCategory.Builder().set(NoiseTexture.class).build();
 				public static ConfigUISpacer noiseTextureSpacer = new ConfigUISpacer.Builder().build();
@@ -299,13 +301,15 @@ public class Config
 						.build();
 					
 					public static ConfigEntry<EDhApiGrassSideRendering> grassSideRendering = new ConfigEntry.Builder<EDhApiGrassSideRendering>()
-						.set(EDhApiGrassSideRendering.FADE_TO_DIRT)
+						.set(EDhApiGrassSideRendering.GRASS_TOP_BLOCK)
 						.comment(""
 							+ "How should the sides and bottom of grass block LODs render? \n"
 							+ "\n"
 							+ EDhApiGrassSideRendering.AS_GRASS + ": all sides of dirt LOD's render using the top (green) color. \n"
 							+ EDhApiGrassSideRendering.FADE_TO_DIRT + ": sides fade from grass to dirt. \n"
 							+ EDhApiGrassSideRendering.AS_DIRT + ": sides render entirely as dirt. \n"
+							+ EDhApiGrassSideRendering.GRASS_TOP_BLOCK + ": the top block shows the grass side texture, the rest renders as dirt. \n"
+							+ "  Falls back to " + EDhApiGrassSideRendering.FADE_TO_DIRT + " on LODs wider than a block or where textures aren't drawn. \n"
 							+ "")
 						.addListener(ReloadLodsConfigEventHandler.DELAYED_INSTANCE)
 						.build();
@@ -691,7 +695,7 @@ public class Config
 						.build();
 					
 					public static ConfigEntry<String> blocksDontRenderTextureCsv = new ConfigEntry.Builder<String>()
-						.set("minecraft:bamboo")
+						.set("")
 						.setAppearance(EConfigEntryAppearance.ALL)
 						.comment(""
 							+ "A comma separated list of block resource locations \n"
@@ -749,6 +753,49 @@ public class Config
 							+ "a side uses just part of a modeled block's texture. \n"
 							+ "\n"
 							+ "Example: \"minecraft:beacon\" \n"
+							+ "\n"
+							+ "Changes require a restart. \n"
+							+ "")
+						.build();
+					
+				}
+				
+				public static class Model
+				{
+					public static ConfigEntry<Boolean> enableBlockModels = new ConfigEntry.Builder<Boolean>()
+						.set(true)
+						.comment(""
+							+ "If true nearby LODs will render blocks with their real shape \n"
+							+ "instead of full cubes. \n"
+							+ "If false all LODs render as full cubes. \n"
+							+ " \n"
+							+ "Only applies to the highest detail LODs. \n"
+							+ "")
+						.addListener(ReloadLodsConfigEventHandler.DELAYED_INSTANCE)
+						.addListener(BlockModelConfigEventHandler.INSTANCE)
+						.build();
+					
+					public static ConfigEntry<Boolean> enableNonCollidingBlockModels = new ConfigEntry.Builder<Boolean>()
+						.set(true)
+						.comment(""
+							+ "If true blocks without collision (plants, flowers) \n"
+							+ "also render with their block model. \n"
+							+ " \n"
+							+ "Turned off when LOD block models are turned off. \n"
+							+ "")
+						.setOnlyEnabledWhen(enableBlockModels)
+						.addListener(ReloadLodsConfigEventHandler.DELAYED_INSTANCE)
+						.build();
+					
+					public static ConfigEntry<String> blocksDontRenderModelCsv = new ConfigEntry.Builder<String>()
+						.set("")
+						.setAppearance(EConfigEntryAppearance.ALL)
+						.comment(""
+							+ "A comma separated list of block resource locations \n"
+							+ "that DH won't render with their model. \n"
+							+ "Partial matches/incomplete resource locations will also match. \n"
+							+ "\n"
+							+ "Example: \"minecraft:oak_fence,stairs\" \n"
 							+ "\n"
 							+ "Changes require a restart. \n"
 							+ "")
@@ -886,12 +933,14 @@ public class Config
 						.build();
 					
 					public static ConfigEntry<String> waterSurfaceBlockReplacementCsv = new ConfigEntry.Builder<String>()
+						// TODO Remove this once most shaders support model rendering
 						.set("minecraft:lily_pad")
 						.setAppearance(EConfigEntryAppearance.ALL)
 						.addListener(RenderBlockCacheCsvHandler.INSTANCE)
 						.comment(""
 							+ "A comma separated list of block resource locations that will be removed \n"
 							+ "when on top of water. \n"
+							+ "Blocks drawn with their block model aren't removed. \n"
 							+ "")
 						.build();
 					
@@ -904,6 +953,9 @@ public class Config
 							+ "\n"
 							+ EDhApiBlocksToAvoid.NONE + ": Include all blocks in the LODs \n"
 							+ EDhApiBlocksToAvoid.NON_COLLIDING + ": Only render solid blocks in the LODs (tall grass, torches, etc. will be ignored) \n"
+							+ "\n"
+							+ "Blocks drawn with their block model aren't ignored, \n"
+							+ "plants drawn as models are set by enableNonCollidingBlockModels. \n"
 							+ "")
 						.addListener(ReloadLodsConfigEventHandler.DELAYED_INSTANCE)
 						.build();
@@ -1220,7 +1272,7 @@ public class Config
 						.addListener(ReloadLodsConfigEventHandler.INSTANT_INSTANCE)
 						.build();
 					public static ConfigEntry<Integer> columnBuilderDebugDetailLevel = new ConfigEntry.Builder<Integer>()
-						.set((int) DhSectionPos.SECTION_MINIMUM_DETAIL_LEVEL)
+						.set(0)
 						.setAppearance(EConfigEntryAppearance.ONLY_IN_GUI)
 						.addListener(ReloadLodsConfigEventHandler.INSTANT_INSTANCE)
 						.build();

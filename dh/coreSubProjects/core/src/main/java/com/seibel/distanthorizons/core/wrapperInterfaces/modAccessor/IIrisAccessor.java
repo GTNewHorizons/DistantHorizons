@@ -31,6 +31,8 @@ public interface IIrisAccessor extends IModAccessor
 	
 	boolean isReverseZDuringShaders();
 	
+	boolean supportsMultiBackend();
+	
 	/**
 	 * Returns the depth texture ID Iris created for the given Minecraft {@code Framebuffer}
 	 * via its mixin injection.

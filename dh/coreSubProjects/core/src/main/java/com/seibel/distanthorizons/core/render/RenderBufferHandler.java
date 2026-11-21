@@ -22,6 +22,8 @@ package com.seibel.distanthorizons.core.render;
 import com.seibel.distanthorizons.api.DhApi;
 import com.seibel.distanthorizons.api.interfaces.override.rendering.IDhApiCullingFrustum;
 import com.seibel.distanthorizons.api.interfaces.override.rendering.IDhApiShadowCullingFrustum;
+import com.seibel.distanthorizons.api.interfaces.render.renderDef.AbstractDhApiRenderDefinition;
+import com.seibel.distanthorizons.api.interfaces.render.renderDef.objects.IDhApiVertexBufferWrapper;
 import com.seibel.distanthorizons.core.config.Config;
 import com.seibel.distanthorizons.core.dataObjects.render.bufferBuilding.LodBufferContainer;
 import com.seibel.distanthorizons.core.dependencyInjection.ModAccessorInjector;
@@ -30,7 +32,6 @@ import com.seibel.distanthorizons.core.logging.DhLogger;
 import com.seibel.distanthorizons.core.logging.DhLoggerBuilder;
 import com.seibel.distanthorizons.core.logging.f3.F3Screen;
 import com.seibel.distanthorizons.core.pos.DhSectionPos;
-import com.seibel.distanthorizons.core.pos.blockPos.DhBlockPos2D;
 import com.seibel.distanthorizons.core.render.QuadTree.LodQuadTree;
 import com.seibel.distanthorizons.core.render.QuadTree.LodRenderSection;
 import com.seibel.distanthorizons.core.render.renderer.LodRenderer;
@@ -46,6 +47,7 @@ import com.seibel.distanthorizons.core.util.math.DhMat4f;
 import org.joml.Matrix4f;
 
 import java.util.ArrayList;
+import java.util.function.Function;
 
 /**
  * This object tells the {@link LodRenderer} what buffers to render
@@ -69,13 +71,24 @@ public class RenderBufferHandler implements AutoCloseable
 	public final LodQuadTree lodQuadTree;
 	
 	private final SortedArraySet<LodBufferContainer> loadedNearToFarBuffers;
+	private AbstractDhApiRenderDefinition currentRenderDefinition;
+	/** camera position the buffers are sorted relative to, updated in {@link #buildRenderList} */
+	private double sortCameraBlockX;
+	private double sortCameraBlockZ;
 	/** temp array to prevent threading issues and prevent re-allocating the same array each frame */
 	private final ArrayList<LodRenderSection> tempProcessNodeList = new ArrayList<>();
 	
-	private int visibleBufferCount;
-	private int culledBufferCount;
-	private int shadowVisibleBufferCount;
-	private int shadowCulledBufferCount;
+	private long visibleBufferCount;
+	//private long visibleVertexCount;
+	
+	private long culledBufferCount;
+	//private long culledVertexCount;
+	
+	private long shadowVisibleBufferCount;
+	//private long shadowVisibleVertexCount;
+	
+	private long shadowCulledBufferCount;
+	//private long shadowCulledVertexCount;
 	
 	
 	
@@ -104,15 +117,20 @@ public class RenderBufferHandler implements AutoCloseable
 		this.loadedNearToFarBuffers = new SortedArraySet<>(this::sortBufferContainersNearToFar);
 	}
 	private int sortBufferContainersNearToFar(LodBufferContainer loadedBufferA, LodBufferContainer loadedBufferB)
+	{ return Double.compare(this.distanceSquaredToCamera(loadedBufferA.pos), this.distanceSquaredToCamera(loadedBufferB.pos)); }
+	/**
+	 * horizontal distance from the camera to the center of the section. <br>
+	 * The center is used instead of the closest point since the section sizes
+	 * are also chosen by the distance to their center, the closest point would
+	 * sort larger sections in front of the smaller sections next to them.
+	 */
+	private double distanceSquaredToCamera(long pos)
 	{
-		DhBlockPos2D aPos = DhSectionPos.getCenterBlockPos(loadedBufferA.pos);
-		DhBlockPos2D bPos = DhSectionPos.getCenterBlockPos(loadedBufferB.pos);
+		double halfWidth = DhSectionPos.getBlockWidth(pos) / 2.0;
 		
-		DhBlockPos2D centerPos = this.lodQuadTree.getCenterBlockPos();
-		
-		int aManhattanDistance = aPos.manhattanDist(centerPos);
-		int bManhattanDistance = bPos.manhattanDist(centerPos);
-		return aManhattanDistance - bManhattanDistance;
+		double x = (DhSectionPos.getMinCornerBlockX(pos) + halfWidth) - this.sortCameraBlockX;
+		double z = (DhSectionPos.getMinCornerBlockZ(pos) + halfWidth) - this.sortCameraBlockZ;
+		return (x * x) + (z * z);
 	}
 	
 	//endregion
@@ -140,6 +158,7 @@ public class RenderBufferHandler implements AutoCloseable
 		
 		// clear the old list so we can start fresh
 		this.loadedNearToFarBuffers.clear();
+		this.currentRenderDefinition = renderParams.renderDefinition;
 		
 		
 		
@@ -196,10 +215,12 @@ public class RenderBufferHandler implements AutoCloseable
 		if (isShadowPass)
 		{
 			this.shadowCulledBufferCount = 0;
+			//this.shadowCulledVertexCount = 0;
 		}
 		else
 		{
 			this.culledBufferCount = 0;
+			//this.culledVertexCount = 0;
 		}
 		
 		// setup iterator with culling frustum
@@ -225,10 +246,12 @@ public class RenderBufferHandler implements AutoCloseable
 						if (isShadowPass)
 						{
 							this.shadowCulledBufferCount++;
+							//this.shadowCulledVertexCount += countAllVerticies(renderSection.renderBufferContainer);
 						}
 						else
 						{
 							this.culledBufferCount++;
+							//this.culledVertexCount += countAllVerticies(renderSection.renderBufferContainer);
 						}
 						
 						continue;
@@ -245,13 +268,22 @@ public class RenderBufferHandler implements AutoCloseable
 			try
 			{
 				LodBufferContainer bufferContainer = renderSection.renderBufferContainer;
+				
 				if (bufferContainer == null
-					|| !renderSection.getRenderingEnabled())
+					|| !renderSection.getRenderingEnabled()
+					|| !bufferContainer.buffersUploaded)
 				{
 					// shouldn't happen, but just in case
 					continue;
 				}
 				
+				if (bufferContainer.isIncompatibleWith(renderParams.renderDefinition))
+				{
+					// if the render data doesn't match, we'll need it to be re-generated
+					renderSection.renderDataDirty = true;
+					continue;
+				}
+
 				this.loadedNearToFarBuffers.add(bufferContainer);
 			}
 			catch (Exception e)
@@ -260,13 +292,19 @@ public class RenderBufferHandler implements AutoCloseable
 			}
 		}
 		
+		// near to far sorting is needed for transparent rendering (drawn far to near)
+		this.sortCameraBlockX = renderParams.exactCameraPosition.x;
+		this.sortCameraBlockZ = renderParams.exactCameraPosition.z;
+		this.loadedNearToFarBuffers.sort();
 		if (isShadowPass)
 		{
 			this.shadowVisibleBufferCount = this.loadedNearToFarBuffers.size();
+			//this.shadowVisibleVertexCount = countAllVerticies(this.loadedNearToFarBuffers);
 		}
 		else
 		{
 			this.visibleBufferCount = this.loadedNearToFarBuffers.size();
+			//this.visibleVertexCount = countAllVerticies(this.loadedNearToFarBuffers);
 		}
 		
 		//endregion
@@ -277,12 +315,86 @@ public class RenderBufferHandler implements AutoCloseable
 	
 	
 	
+	//=================//
+	// vertex counting //
+	//=================//
+	//region
+	
+	private static long countAllVerticies(SortedArraySet<LodBufferContainer> containers)
+	{
+		long vertexCount = 0L;
+		{
+			vertexCount += countVertices(containers, RenderBufferHandler::getOpaqueBufferWrappers);
+			vertexCount += countVertices(containers, RenderBufferHandler::getTransparentBufferWrappers);
+			vertexCount += countVertices(containers, RenderBufferHandler::getOpaqueNoSsaoBufferWrappers);
+		}
+		return vertexCount;
+	}
+	private static long countAllVerticies(LodBufferContainer container)
+	{
+		long vertexCount = 0L;
+		{
+			vertexCount += countVertices(container, RenderBufferHandler::getOpaqueBufferWrappers);
+			vertexCount += countVertices(container, RenderBufferHandler::getTransparentBufferWrappers);
+			vertexCount += countVertices(container, RenderBufferHandler::getOpaqueNoSsaoBufferWrappers);
+		}
+		return vertexCount;
+	}
+	private static long countVertices(
+		SortedArraySet<LodBufferContainer> bufferContainerList, 
+		Function<LodBufferContainer, IDhApiVertexBufferWrapper[]> getBufferWrapperArrayFunc)
+	{
+		long vertexCount = 0;
+		for (int containerIndex = 0; containerIndex < bufferContainerList.size(); containerIndex++)
+		{
+			LodBufferContainer bufferContainer = bufferContainerList.get(containerIndex);
+			if (bufferContainer != null)
+			{
+				vertexCount += countVertices(bufferContainer, getBufferWrapperArrayFunc);
+			}
+		}
+		return vertexCount;
+	}
+	private static long countVertices(
+		LodBufferContainer bufferContainer,
+		Function<LodBufferContainer, IDhApiVertexBufferWrapper[]> getBufferWrapperArrayFunc)
+	{
+		long vertexCount = 0;
+		IDhApiVertexBufferWrapper[] bufferWrapperArray = getBufferWrapperArrayFunc.apply(bufferContainer);
+		for (int bufferIndex = 0; bufferIndex < bufferWrapperArray.length; bufferIndex++)
+		{
+			IDhApiVertexBufferWrapper bufferWrapper = bufferWrapperArray[bufferIndex];
+			if (bufferWrapper != null)
+			{
+				vertexCount += bufferWrapper.getVertexCount();
+			}
+		}
+		return vertexCount;
+	}
+	private static IDhApiVertexBufferWrapper[] getOpaqueBufferWrappers(LodBufferContainer container) { return container.getVboOpaqueWrappers(); }
+	private static IDhApiVertexBufferWrapper[] getTransparentBufferWrappers(LodBufferContainer container) { return container.getVboTransparentWrappers(); }
+	private static IDhApiVertexBufferWrapper[] getOpaqueNoSsaoBufferWrappers(LodBufferContainer container) { return container.getVboWithoutSsaoWrappers(); }
+	
+	//endregion
+	
+	
+	
 	//================//
 	// render methods //
 	//================//
 	//region
 	
-	public SortedArraySet<LodBufferContainer> getColumnRenderBuffers() { return this.loadedNearToFarBuffers; }
+	public SortedArraySet<LodBufferContainer> getColumnRenderBuffers(RenderParam renderParams)
+	{
+		// If we don't check this, when the renderer changes, it might reuse the wrong/old objects
+		if (this.currentRenderDefinition != renderParams.renderDefinition)
+		{
+			// the render definition changed, rebuild everything to use the new objects 
+			this.buildRenderList(renderParams);
+		}
+		
+		return this.loadedNearToFarBuffers;
+	}
 	
 	//endregion
 	
@@ -295,12 +407,17 @@ public class RenderBufferHandler implements AutoCloseable
 	
 	public String getVboRenderDebugMenuString()
 	{
-		String countText = F3Screen.NUMBER_FORMAT.format(this.visibleBufferCount);
+		// vertex count logic commented out to reduce performance impact and due to not being needed most of the time
+		
+		String bufferCountText = F3Screen.NUMBER_FORMAT.format(this.visibleBufferCount);
+		//String vertexCountText = F3Screen.NUMBER_FORMAT.format(this.visibleVertexCount);
 		if (!Config.Client.Advanced.Graphics.Culling.disableFrustumCulling.get())
 		{
-			countText += "/" + F3Screen.NUMBER_FORMAT.format(this.visibleBufferCount + this.culledBufferCount);
+			bufferCountText += "/" + F3Screen.NUMBER_FORMAT.format(this.visibleBufferCount + this.culledBufferCount);
+			//vertexCountText += "/" + F3Screen.NUMBER_FORMAT.format(this.visibleVertexCount + this.culledVertexCount);
 		}
-		return "VBO Render Count: [" + countText + "]";
+		return "VBO Render Count: [" + bufferCountText + "]";
+		//return "Render Count, VBO: ["+bufferCountText+"] Vertex: ["+vertexCountText+"]";
 	}
 	public String getShadowPassRenderDebugMenuString()
 	{

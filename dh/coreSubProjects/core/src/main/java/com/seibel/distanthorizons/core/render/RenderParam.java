@@ -49,8 +49,6 @@ public class RenderParam extends DhApiRenderParam
 	public RenderBufferHandler renderBufferHandler;
 	public IDhApiCustomRenderRegister genericRegister;
 	public DhVec3d exactCameraPosition;
-	/** @see DhRenderState#vanillaFogEnabled */
-	public boolean vanillaFogEnabled;
 	public IProfilerWrapper profiler;
 	
 	public boolean hasBeenValidated = false;
@@ -76,7 +74,8 @@ public class RenderParam extends DhApiRenderParam
 			renderState.mcProjectionMatrix, renderState.mcModelViewMatrix,
 			this.dhProjectionMatrix, this.dhModelViewMatrix,
 			renderState.clientLevelWrapper.getMinHeight(),
-			renderState.clientLevelWrapper);
+			renderState.clientLevelWrapper,
+			renderState.vanillaFogEnabled);
 		
 		
 		
@@ -100,11 +99,33 @@ public class RenderParam extends DhApiRenderParam
 			this.exactCameraPosition = MC_RENDER.getCameraExactPosition();
 		}
 		
-		this.vanillaFogEnabled = renderState.vanillaFogEnabled;
-		
 		this.profiler = MC_CLIENT.getProfiler();
 		
 		this.apiCopy.update(this);
+	}
+	
+	//endregion
+	
+	
+	
+	//================//
+	// helper methods //
+	//================//
+	//region
+	
+	/** Called when the world is closed so the last rendered level can be garbage collected. */
+	@Override
+	public void clearLevelReferences()
+	{
+		super.clearLevelReferences();
+		this.apiCopy.clearLevelReferences();
+		
+		this.dhClientWorld = null;
+		this.dhClientLevel = null;
+		this.clientLevelWrapper = null;
+		this.lightmap = null;
+		this.renderBufferHandler = null;
+		this.genericRegister = null;
 	}
 	
 	//endregion
@@ -167,14 +188,12 @@ public class RenderParam extends DhApiRenderParam
 			return "No Render Definition Present";
 		}
 		
-		if (this.dhModelViewMatrix.equals(DhMat4f.IDENTITY) 
-			|| this.dhModelViewMatrix.equals(DhMat4f.EMPTY))
+		if (this.dhModelViewMatrix.equals(DhMat4f.EMPTY))
 		{
 			return "No DH MVM Matrix Given";
 		}
 		
-		if (this.mcModelViewMatrix.equals(DhMat4f.IDENTITY) 
-			|| this.mcModelViewMatrix.equals(DhMat4f.EMPTY))
+		if (this.mcModelViewMatrix.equals(DhMat4f.EMPTY))
 		{
 			return "No MC MVM Matrix Given";
 		}

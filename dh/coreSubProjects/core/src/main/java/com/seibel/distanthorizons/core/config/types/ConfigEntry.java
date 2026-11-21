@@ -46,6 +46,9 @@ public class ConfigEntry<T> extends AbstractConfigBase<T>
 	private final String chatCommandName;
 	@Nullable
 	private final IShowEnumOptionFunc showEnumOptionFunc;
+	/** greyed out in the UI while this is false */
+	@Nullable
+	private final ConfigEntry<Boolean> onlyEnabledWhen;
 	
 	/**
 	 * If true this config can be controlled by the API <br>
@@ -85,6 +88,7 @@ public class ConfigEntry<T> extends AbstractConfigBase<T>
 		EConfigEntryAppearance appearance, 
 		String comment, String chatCommandName, 
 		@Nullable IShowEnumOptionFunc showEnumOptionFunc,
+		@Nullable ConfigEntry<Boolean> onlyEnabledWhen,
 		T value, T min, T max,
 		boolean allowApiOverride, 
 		ArrayList<IConfigListener> listenerList)
@@ -96,6 +100,7 @@ public class ConfigEntry<T> extends AbstractConfigBase<T>
 		this.max = max;
 		this.chatCommandName = chatCommandName;
 		this.showEnumOptionFunc = showEnumOptionFunc;
+		this.onlyEnabledWhen = onlyEnabledWhen;
 		this.allowApiOverride = allowApiOverride;
 		this.listenerList = listenerList;
 	}
@@ -116,6 +121,9 @@ public class ConfigEntry<T> extends AbstractConfigBase<T>
 	
 	@Nullable
 	public IShowEnumOptionFunc getShowEnumOptionFunc() { return this.showEnumOptionFunc; }
+	
+	@Nullable
+	public ConfigEntry<Boolean> getOnlyEnabledWhen() { return this.onlyEnabledWhen; }
 	
 	/**
 	 * If true this config can be controlled by the API <br>
@@ -443,6 +451,7 @@ public class ConfigEntry<T> extends AbstractConfigBase<T>
 		private T tmpMax = null;
 		protected String tmpChatCommandName = null;
 		protected IShowEnumOptionFunc tmpShowEnumOptionFunc = null;
+		protected ConfigEntry<Boolean> tmpOnlyEnabledWhen = null;
 		private boolean tmpUseApiOverwrite = true;
 		protected ArrayList<IConfigListener> tmpIConfigListener = new ArrayList<>();
 		
@@ -493,6 +502,12 @@ public class ConfigEntry<T> extends AbstractConfigBase<T>
 			return this;
 		}
 		
+		public Builder<T> setOnlyEnabledWhen(ConfigEntry<Boolean> configEntry)
+		{
+			this.tmpOnlyEnabledWhen = configEntry;
+			return this;
+		}
+		
 		public Builder<T> setUseApiOverwrite(boolean newUseApiOverwrite)
 		{
 			this.tmpUseApiOverwrite = newUseApiOverwrite;
@@ -535,6 +550,7 @@ public class ConfigEntry<T> extends AbstractConfigBase<T>
 				this.tmpAppearance,
 				this.tmpComment, this.tmpChatCommandName, 
 				this.tmpShowEnumOptionFunc,
+				this.tmpOnlyEnabledWhen,
 				this.tmpValue, this.tmpMin, this.tmpMax,
 				this.tmpUseApiOverwrite, 
 				this.tmpIConfigListener);

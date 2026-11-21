@@ -19,10 +19,16 @@
 
 package com.seibel.distanthorizons.core.level;
 
+import com.seibel.distanthorizons.core.pos.DhChunkPos;
 import com.seibel.distanthorizons.core.wrapperInterfaces.world.IServerLevelWrapper;
+
+import java.util.Map;
 
 public interface IDhServerLevel extends IDhLevel
 {
     IServerLevelWrapper getServerLevelWrapper();
+	
+	/** Saves the given chunk hashes, all in one transaction. */
+	void saveChunkHashes(Map<DhChunkPos, Integer> chunkHashByPos);
 	
 }

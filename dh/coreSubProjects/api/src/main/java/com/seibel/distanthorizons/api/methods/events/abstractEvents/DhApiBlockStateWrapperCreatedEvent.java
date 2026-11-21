@@ -33,7 +33,7 @@ import com.seibel.distanthorizons.api.methods.events.sharedParameterObjects.DhAp
  * and those {@link IDhApiBlockStateWrapper} will only be created once per JVM session.
  * 
  * @author James Seibel
- * @version 2026-04-14
+ * @version 2026-10-29
  * @since API 6.0.0
  * @see IDhApiBlockStateWrapper
  */
@@ -68,6 +68,7 @@ public abstract class   DhApiBlockStateWrapperCreatedEvent implements IDhApiEven
 		private Integer opacity = null;
 		private Boolean allowApiColorOverride = null;
 		private Boolean allowApiTextureOverride = null;
+		private Boolean allowApiModelOverride = null;
 		
 		
 		
@@ -116,6 +117,18 @@ public abstract class   DhApiBlockStateWrapperCreatedEvent implements IDhApiEven
 			this.overridesSet = true;
 		}
 		public Boolean getAllowApiTextureOverride() { return this.allowApiTextureOverride; }
+		
+		/**
+		 * if set to true, {@link DhApiBlockModelOverrideEvent} events will be triggered when this block's model is first needed.
+		 *
+		 * @since API 7.3.0
+		 */
+		public void setAllowApiModelOverride(boolean allowApiModelOverride)
+		{
+			this.allowApiModelOverride = allowApiModelOverride;
+			this.overridesSet = true;
+		}
+		public Boolean getAllowApiModelOverride() { return this.allowApiModelOverride; }
 		
 		/** If true then one or more options for this block were set to be changed */
 		public boolean getOverridesSet() { return this.overridesSet; }

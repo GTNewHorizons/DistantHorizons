@@ -9,6 +9,8 @@ layout(location = 2) in vec3 vertexWorldPos;
 layout(location = 3) in vec3 vBlockPos;
 layout(location = 4) flat in uint vNormalIndex;
 layout(location = 5) flat in uint vTextureTileId;
+layout(location = 7) in vec2 vModelUv;
+layout(location = 8) flat in uint vUsesModelUv;
 layout(location = 6) in vec4 gl_FragCoord;
 
 layout(location = 0) out vec4 fragColor;
@@ -106,7 +108,7 @@ float bayerMatrix4x4(vec2 st)
  */
 vec2 blockFaceUv()
 {
-    vec3 pos = fract(vBlockPos);
+    vec3 pos = vBlockPos;
     switch (vNormalIndex)
     {
         case 0u: return vec2(pos.x, 1.0 - pos.z); // down
@@ -125,11 +127,21 @@ void main()
     if (vTextureTileId != 0u)
     {
         // tile id -> grid cell -> exact texel.
-        // texture() allow us to use mipmaps
+        // Keep mip selection continuous across block boundaries.
         ivec2 atlasSize = textureSize(uBlockAtlas, 0);
         vec2 tileOrigin = vec2(float(vTextureTileId % 256u), float(vTextureTileId / 256u)) * 16.0;
-        vec2 uv = (tileOrigin + blockFaceUv() * 16.0) / vec2(atlasSize);
-        vec4 tile = texture(uBlockAtlas, uv);
+        // 1.0 would land on the next tile
+        vec2 faceUv = (vUsesModelUv != 0u) ? min(vModelUv, vec2(0.999)) : blockFaceUv();
+        vec2 tileScale = 16.0 / vec2(atlasSize);
+        vec2 uv = tileOrigin / vec2(atlasSize) + fract(faceUv) * tileScale;
+        vec4 tile = textureGrad(uBlockAtlas, uv, dFdx(faceUv) * tileScale, dFdy(faceUv) * tileScale);
+        
+        // clear pixels in model textures are cut out
+        if (vUsesModelUv != 0u
+            && texelFetch(uBlockAtlas, ivec2(tileOrigin + faceUv * 16.0), 0).a == 0.0)
+        {
+            discard;
+        }
 
         // The tile's color ratio preserves the LOD's original tint and shading.
         // Tile color value of gray, 128 (half way between 0 and 255)

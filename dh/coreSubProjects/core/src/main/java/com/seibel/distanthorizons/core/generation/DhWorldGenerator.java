@@ -31,6 +31,7 @@ import com.seibel.distanthorizons.core.dependencyInjection.SingletonInjector;
 import com.seibel.distanthorizons.core.file.fullDatafile.V2.FullDataSourceProviderV2;
 import com.seibel.distanthorizons.core.level.IDhServerLevel;
 import com.seibel.distanthorizons.core.logging.DhLoggerBuilder;
+import com.seibel.distanthorizons.core.pos.DhChunkPos;
 import com.seibel.distanthorizons.core.pos.DhSectionPos;
 import com.seibel.distanthorizons.core.util.WorldGenUtil;
 import com.seibel.distanthorizons.core.wrapperInterfaces.chunk.IChunkWrapper;
@@ -48,6 +49,7 @@ import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutorService;
 import java.util.function.Consumer;
@@ -276,6 +278,21 @@ public class DhWorldGenerator implements IDhApiWorldGenerator
 				}
 				pooledFullDataSource.recordLastSeen();
 				resultConsumer.accept(pooledFullDataSource);
+				
+				// the hashes let later saves of these chunks skip the LOD update when nothing changed.
+				// They are saved before the LODs read the chunks: a generation event that releases one of these chunks
+				// and doesn't find its hash yet knows its changes are still included in the LOD built below.
+				boolean checkChunkHash = !Config.Common.LodBuilding.disableUnchangedChunkCheck.get();
+				if (checkChunkHash)
+				{
+					HashMap<DhChunkPos, Integer> chunkHashByPos = new HashMap<>(chunkList.size());
+					for (int i = 0; i < chunkList.size(); i++)
+					{
+						IChunkWrapper chunkWrapper = chunkList.get(i);
+						chunkHashByPos.put(chunkWrapper.getChunkPos(), chunkWrapper.getBlockBiomeHashCode());
+					}
+					this.serverLevel.saveChunkHashes(chunkHashByPos);
+				}
 				
 				return null; // result ignored
 			});

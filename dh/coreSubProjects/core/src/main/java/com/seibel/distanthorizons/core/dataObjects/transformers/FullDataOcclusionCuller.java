@@ -3,6 +3,7 @@ package com.seibel.distanthorizons.core.dataObjects.transformers;
 import com.seibel.distanthorizons.core.dataObjects.fullData.sources.FullDataSourceV2;
 import com.seibel.distanthorizons.core.util.FullDataPointUtil;
 import com.seibel.distanthorizons.core.util.LodUtil;
+import com.seibel.distanthorizons.core.wrapperInterfaces.block.IBlockStateWrapper;
 import it.unimi.dsi.fastutil.longs.LongArrayList;
 import org.jetbrains.annotations.NotNull;
 
@@ -50,15 +51,15 @@ public class FullDataOcclusionCuller
 		{
 			long currentPoint = centerColumn.getLong(centerIndex);
 			
-			// Translucent data points are not eligible to be culled.
-			if (isTranslucent(dataSource, currentPoint))
+			// See through data points are not eligible to be culled.
+			if (isSeeThrough(dataSource, currentPoint))
 			{
 				continue;
 			}
 			
 			// the top segment should never be culled.
 			if (centerIndex == 0
-				|| isTranslucent(dataSource, centerColumn.getLong(centerIndex - 1)))
+				|| isSeeThrough(dataSource, centerColumn.getLong(centerIndex - 1)))
 			{
 				continue;
 			}
@@ -67,7 +68,7 @@ public class FullDataOcclusionCuller
 			// assume it will not be seen from below,
 			// because this would imply the player is in the void.
 			if (centerIndex + 1 < centerColumn.size()
-				&& isTranslucent(dataSource, centerColumn.getLong(centerIndex + 1)))
+				&& isSeeThrough(dataSource, centerColumn.getLong(centerIndex + 1)))
 			{
 				continue;
 			}
@@ -170,7 +171,7 @@ public class FullDataOcclusionCuller
 				// check the next one
 				continue;
 			}
-			else if (isTranslucent(source, adjacentPoint))
+			else if (isSeeThrough(source, adjacentPoint))
 			{
 				// this point is adjacent to a transparent LOD and should be shown
 				return ~adjacentIndex;
@@ -187,11 +188,13 @@ public class FullDataOcclusionCuller
 		// this point should be visible
 		return ~adjacentIndex;
 	}
-	private static boolean isTranslucent(FullDataSourceV2 source, long point)
+	private static boolean isSeeThrough(FullDataSourceV2 source, long point)
 	{
 		int id = FullDataPointUtil.getId(point);
-		int opacity = source.mapping.getBlockStateWrapper(id).getOpacity();
-		return opacity < LodUtil.BLOCK_FULLY_OPAQUE;
+		IBlockStateWrapper block = source.mapping.getBlockStateWrapper(id);
+		// models don't hide the blocks behind them
+		return block.getOpacity() < LodUtil.BLOCK_FULLY_OPAQUE
+			|| !block.isFullBlock();
 	}
 	
 	

@@ -31,7 +31,7 @@ public final class ModInfo
 	public static final String DEDICATED_SERVER_INITIAL_PATH = "dedicated_server_initial";
 	
 	/** Incremented every time any packets are added, changed or removed, with a few exceptions. */
-	public static final int PROTOCOL_VERSION = 16;
+	public static final int PROTOCOL_VERSION = 17;
 
 	/** 
 	 * The full plugin channel name (RESOURCE_NAMESPACE:WRAPPER_PACKET_PATH) 
@@ -55,7 +55,7 @@ public final class ModInfo
 	public static final int API_PATCH_VERSION = 0;
 	
 	/** If the config file has an older version it'll be re-created from scratch. */
-	public static final int CONFIG_FILE_VERSION = 5;
+	public static final int CONFIG_FILE_VERSION = 6;
 	
 	/** All DH owned threads should start with this string to allow for easier debugging and profiling. */
 	public static final String THREAD_NAME_PREFIX = "DH-";

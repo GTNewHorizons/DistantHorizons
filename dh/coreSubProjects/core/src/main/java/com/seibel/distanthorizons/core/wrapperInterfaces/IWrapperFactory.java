@@ -97,9 +97,10 @@ public interface IWrapperFactory extends IDhApiWrapperFactory, IBindable
 	
 	ObjectOpenHashSet<IBlockStateWrapper> getWaterSubsurfaceReplacementBlocks(ILevelWrapper levelWrapper);
 	ObjectOpenHashSet<IBlockStateWrapper> getWaterSurfaceReplacementBlocks(ILevelWrapper levelWrapper);
+	
 	/** clears the cached values */
 	void resetCachedIgnoredBlocksSets();
-	
+	void clearBiomeWrapperCache();
 	
 	/**
 	 * Specifically designed to be used with the API.

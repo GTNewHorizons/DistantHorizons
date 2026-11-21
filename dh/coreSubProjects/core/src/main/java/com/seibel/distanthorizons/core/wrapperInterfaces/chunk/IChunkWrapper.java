@@ -73,6 +73,9 @@ public interface IChunkWrapper extends IBindable
 	 */
 	int getLightBlockingHeightMapValue(int xRel, int zRel);
 	
+	/** @return The highest y position of any non-air block at the given relative chunk position. */
+	int getNonAirHeightMapValue(int xRel, int zRel);
+	
 	int getMinBlockX();
 	int getMinBlockZ();
 	

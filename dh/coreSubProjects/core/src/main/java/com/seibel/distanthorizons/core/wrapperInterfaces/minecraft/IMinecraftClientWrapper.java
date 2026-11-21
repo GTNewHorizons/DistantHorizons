@@ -21,6 +21,7 @@ package com.seibel.distanthorizons.core.wrapperInterfaces.minecraft;
 
 import com.seibel.distanthorizons.core.pos.blockPos.DhBlockPos;
 import com.seibel.distanthorizons.core.pos.DhChunkPos;
+import com.seibel.distanthorizons.core.pos.blockPos.DhBlockPosMutable;
 import com.seibel.distanthorizons.core.render.RenderThreadTaskHandler;
 import com.seibel.distanthorizons.core.wrapperInterfaces.world.IClientLevelWrapper;
 import com.seibel.distanthorizons.coreapi.interfaces.dependencyInjection.IBindable;
@@ -54,6 +55,9 @@ public interface IMinecraftClientWrapper extends IBindable
 	
 	/** @return (0,0) if no player is loaded */
 	DhChunkPos getPlayerChunkPos();
+	
+	/** If no player is loaded, {@code playerBlockPos} is set to (0,0,0). */
+	void getPlayerBlockPosMutable(DhBlockPosMutable playerBlockPos);
 	
 	
 	

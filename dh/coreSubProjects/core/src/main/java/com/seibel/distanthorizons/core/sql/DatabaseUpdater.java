@@ -19,10 +19,13 @@
 
 package com.seibel.distanthorizons.core.sql;
 
+import com.seibel.distanthorizons.core.dependencyInjection.SingletonInjector;
 import com.seibel.distanthorizons.core.logging.DhLoggerBuilder;
 import com.seibel.distanthorizons.core.sql.dto.IBaseDTO;
 import com.seibel.distanthorizons.core.sql.repo.AbstractDhRepo;
 import com.seibel.distanthorizons.core.logging.DhLogger;
+import com.seibel.distanthorizons.core.util.ThreadUtil;
+import com.seibel.distanthorizons.core.wrapperInterfaces.minecraft.IMinecraftClientWrapper;
 
 import java.io.IOException;
 import java.io.InputStream;
@@ -30,6 +33,7 @@ import java.sql.*;
 import java.util.ArrayList;
 import java.util.Map;
 import java.util.Scanner;
+import java.util.concurrent.ThreadPoolExecutor;
 
 /** Handles both initial setup and updating of the sql databases. */
 public class DatabaseUpdater
@@ -52,6 +56,12 @@ public class DatabaseUpdater
 	 */
 	private static final String SQL_SCRIPT_LIST_FILE = SQL_SCRIPT_RESOURCE_FOLDER+"scriptList.txt";
 	
+	/** 
+	 * how long to wait in Milliseconds before we display a message dialog
+	 * to inform the user why the loading screen is taking so long.
+	 */
+	private static final int SLOW_UPDATE_DIALOG_DELAY_MS = 10_000;
+	
 	
 	
 	//================//
@@ -59,6 +69,52 @@ public class DatabaseUpdater
 	//================//
 	
 	public static <TKey, TDTO extends IBaseDTO<TKey>> void runAutoUpdateScripts(AbstractDhRepo<TKey, TDTO> repo) throws SQLException
+	{
+		// background thread that waits before showing a "this is taking a while" dialog
+		ThreadPoolExecutor dialogExecutor = ThreadUtil.makeSingleDaemonThreadPool("SQL update dialog ["+repo.databaseFile.getPath()+"]");
+		dialogExecutor.execute(() ->
+		{
+			try
+			{
+				Thread.sleep(SLOW_UPDATE_DIALOG_DELAY_MS);
+			}
+			catch (InterruptedException e)
+			{
+				// the update finished before the delay elapsed, don't show anything
+				return;
+			}
+			
+			try
+			{
+				// client wrapper will be null if this is running on a dedicated server
+				IMinecraftClientWrapper minecraftClient = SingletonInjector.INSTANCE.get(IMinecraftClientWrapper.class);
+				if (minecraftClient != null)
+				{
+					// a dialog is important so the user doesn't think the game just locked up
+					minecraftClient.showDialog(
+						"Distant Horizons - Updating Database",
+						"Distant Horizons is updating its SQL databases. \nThis may take a while, please don't close the game.",
+						"ok", "info");
+				}
+			}
+			catch (Exception e)
+			{
+				LOGGER.warn("DH is taking a long time to update it's database(s), and failed to show the message dialog. Error: ["+e.getMessage()+"].", e);
+			}
+		});
+		
+		try
+		{
+			runAutoUpdateScriptsInternal(repo);
+		}
+		finally
+		{
+			// interrupts the sleeping thread if the dialog hasn't been shown yet
+			dialogExecutor.shutdownNow();
+		}
+	}
+	
+	private static <TKey, TDTO extends IBaseDTO<TKey>> void runAutoUpdateScriptsInternal(AbstractDhRepo<TKey, TDTO> repo) throws SQLException
 	{
 		// get the resource scripts
 		ArrayList<SqlScript> scriptList;

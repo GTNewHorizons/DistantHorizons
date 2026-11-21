@@ -63,6 +63,9 @@ public class SortedArraySet<E> implements IDhApiReadOnlyList<E>
 		}
 	}
 	
+	/** {@link #add(Object)} doesn't sort, this needs to be called after adding elements */
+	public void sort() { this.list.sort(this.comparator); }
+
 	public E get(int index) { return this.list.get(index); }
 	
 	public int size() { return this.list.size(); }
