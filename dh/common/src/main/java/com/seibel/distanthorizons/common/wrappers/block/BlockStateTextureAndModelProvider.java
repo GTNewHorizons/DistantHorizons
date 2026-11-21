@@ -20,19 +20,20 @@
 package com.seibel.distanthorizons.common.wrappers.block;
 
 import com.seibel.distanthorizons.core.dataObjects.render.textures.BlockFaceTexture;
+import com.seibel.distanthorizons.core.dataObjects.render.textures.DhBlockModelQuad;
 import com.seibel.distanthorizons.core.enums.EDhDirection;
-import com.seibel.distanthorizons.core.wrapperInterfaces.block.IBlockStateFaceTextureProvider;
+import com.seibel.distanthorizons.core.wrapperInterfaces.block.IBlockStateTextureAndModelProvider;
 import com.seibel.distanthorizons.core.wrapperInterfaces.block.IBlockStateWrapper;
 import org.jetbrains.annotations.Nullable;
 
 /**
  * Exposes {@link ClientBlockStateTextureCache} to DH core.
  *
- * @see IBlockStateFaceTextureProvider
+ * @see IBlockStateTextureAndModelProvider
  */
-public class BlockStateTextureProvider implements IBlockStateFaceTextureProvider
+public class BlockStateTextureAndModelProvider implements IBlockStateTextureAndModelProvider
 {
-	public static final BlockStateTextureProvider INSTANCE = new BlockStateTextureProvider();
+	public static final BlockStateTextureAndModelProvider INSTANCE = new BlockStateTextureAndModelProvider();
 	
 	
 	
@@ -46,6 +47,28 @@ public class BlockStateTextureProvider implements IBlockStateFaceTextureProvider
 			throw new UnsupportedOperationException("blockState must be a ["+BlockStateWrapper.class.getSimpleName()+"]");
 		}
 		return ClientBlockStateTextureCache.getFaceTexture((BlockStateWrapper) blockState, direction);
+	}
+	
+	@Override
+	public DhBlockModelQuad[] getModel(IBlockStateWrapper blockState)
+	{
+		if (!(blockState instanceof BlockStateWrapper))
+		{
+			// shouldn't happen, but just in case
+			throw new UnsupportedOperationException("blockState must be a ["+BlockStateWrapper.class.getSimpleName()+"]");
+		}
+		return ClientBlockStateTextureCache.getModel((BlockStateWrapper) blockState);
+	}
+	
+	@Override
+	public boolean isFaceTinted(IBlockStateWrapper blockState, EDhDirection direction)
+	{
+		if (!(blockState instanceof BlockStateWrapper))
+		{
+			// shouldn't happen, but just in case
+			throw new UnsupportedOperationException("blockState must be a ["+BlockStateWrapper.class.getSimpleName()+"]");
+		}
+		return ClientBlockStateTextureCache.isFaceTinted((BlockStateWrapper) blockState, direction);
 	}
 	
 	@Override

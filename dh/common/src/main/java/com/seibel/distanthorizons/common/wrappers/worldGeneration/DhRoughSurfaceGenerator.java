@@ -55,10 +55,8 @@ import java.util.function.Consumer;
 import net.minecraft.world.level.levelgen.DensityFunction;
 import net.minecraft.core.QuartPos;
 #else
-import net.minecraft.world.level.levelgen.densityfunction.*;
 import com.mojang.datafixers.util.Pair;
 import net.minecraft.core.BlockPos;
-import net.minecraft.util.context.ContextMap;
 #endif
 
 public class DhRoughSurfaceGenerator implements IRoughGenerator
@@ -147,6 +145,8 @@ public class DhRoughSurfaceGenerator implements IRoughGenerator
 		ArrayList<DhApiTerrainDataPoint> apiDataPoints = new ArrayList<>();
 		int width = pooledFullDataSource.getWidthInDataColumns();
 		
+		this.genParams.cachedDensity.createThreadLocal();
+
 		try(PhantomArrayListCheckout checkout = ARRAY_LIST_POOL.checkoutLongArrays(3))
 		{
 			// we could probably get away with an int or short array,
@@ -266,6 +266,10 @@ public class DhRoughSurfaceGenerator implements IRoughGenerator
 						x, z);
 				}
 			}
+		}
+		finally
+		{
+			this.genParams.cachedDensity.removeThreadLocal();
 		}
 		
 		//endregion
@@ -984,14 +988,7 @@ public class DhRoughSurfaceGenerator implements IRoughGenerator
 	
 	
 	private static boolean isNoiseSolidAtBlockPos(GenParams genParams, int blockX, int blockY, int blockZ)
-	{
-		#if MC_VER <= MC_26_2_0
-		return genParams.density
-			.compute(new DensityFunction.SinglePointContext(blockX, blockY, blockZ)) > 0.0;
-		#else
-		return genParams.density.sampleValue(blockX, blockY, blockZ) > 0.0;
-		#endif
-	}
+	{ return genParams.cachedDensity.sampleValue(blockX, blockY, blockZ) > 0.0; }
 	
 	//endregion
 	
@@ -1033,9 +1030,8 @@ public class DhRoughSurfaceGenerator implements IRoughGenerator
 		
 		#if MC_VER <= MC_26_2_0
 		public DensityFunction density;
-		#else
-		public DensitySampler.Bound density;
 		#endif
+		private final RoughSurfaceDensitySampler cachedDensity;
 		
 		public boolean isSuperFlatWorld;
 		public int superFlatHeight = Integer.MIN_VALUE;
@@ -1076,21 +1072,11 @@ public class DhRoughSurfaceGenerator implements IRoughGenerator
 			#if MC_VER <= MC_26_2_0
 			
 			this.density = this.randomState.router().finalDensity();
+			this.cachedDensity = new RoughSurfaceDensitySampler(this.density);
 			
 			#else
 			
-			ContextMap samplerUserFields = ContextMap.builder()
-				.set(Beardifier.CONTEXT_KEY, Beardifier.EMPTY)
-				.build();
-			
-			DensitySamplerSet densitySamplers = this.randomState.samplersWithContext(
-				SamplerContext.builder()
-					.setUserFields(samplerUserFields)
-					.build()
-			);
-			
-			DensityFunction finalDensityFunc = this.randomState.router.finalDensity();
-			this.density = densitySamplers.get(finalDensityFunc);
+			this.cachedDensity = new RoughSurfaceDensitySampler(this.randomState, this.randomState.router.finalDensity());
 			
 			#endif
 			//endregion

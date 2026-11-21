@@ -20,13 +20,12 @@
 package com.seibel.distanthorizons.common.wrappers.modAccessor;
 import com.seibel.distanthorizons.core.wrapperInterfaces.modAccessor.IHodgePodgeAccessor;
 #if MC_VER == MC_1_7_10
-import net.minecraft.world.World;
+import net.minecraftforge.common.ForgeChunkManager;
 #endif
 
 public interface IHodgePodgeCommonAccessor extends IHodgePodgeAccessor
 {
 	#if MC_VER == MC_1_7_10
-	void preventChunkSimulation(World world, int x, int z);
-	void allowChunkSimulation(World world, int x, int z);
+	void excludeTicketFromSimulation(ForgeChunkManager.Ticket ticket);
 	#endif
 }

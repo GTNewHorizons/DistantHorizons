@@ -45,11 +45,12 @@ import com.seibel.distanthorizons.common.backports.IBlockState;
 import com.seibel.distanthorizons.common.backports.FakeBlockState;
 import com.seibel.distanthorizons.common.backports.FakeWorld;
 #elif MC_VER <= MC_1_12_2
+import net.minecraftforge.fluids.Fluid;
+import net.minecraftforge.fluids.IFluidBlock;
 import net.minecraft.block.state.IBlockState;
 import net.minecraft.init.Blocks;
 import net.minecraft.util.EnumBlockRenderType;
 import net.minecraft.util.EnumFacing;
-import net.minecraft.block.BlockRotatedPillar;
 import net.minecraft.block.*;
 import net.minecraft.client.multiplayer.WorldClient;
 import net.minecraft.client.renderer.color.BlockColors;
@@ -374,14 +375,7 @@ public class ClientBlockStateColorCache
 						&& !quads.isEmpty()
 						// for rotated blocks (ie logs) we want the side instead of the top,
 						// so logs use their bark side instead of their cut/inner side
-						&& !(
-							#if MC_VER <= MC_1_12_2
-							this.blockState.getBlock() instanceof BlockRotatedPillar
-							#else
-							this.blockState.getBlock() instanceof RotatedPillarBlock
-							#endif
-							&& direction == EDhDirection.UP
-							)
+						&& !(this.blockStateWrapper.isRotatedPillar() && direction == EDhDirection.UP)
 						)
 					{
 						break;
@@ -408,6 +402,17 @@ public class ClientBlockStateColorCache
 					try
 					{
 						BakedQuad firstQuad = quads.get(0);
+						BakedQuad untintedQuad = null;
+						// take the color from a tinted part if there is one
+						if (!ClientBlockStateTextureCache.isQuadTinted(firstQuad))
+						{
+							BakedQuad tintedQuad = this.findTintedQuad();
+							if (tintedQuad != null)
+							{
+								untintedQuad = firstQuad;
+								firstQuad = tintedQuad;
+							}
+						}
 						
 						#if MC_VER <= MC_1_12_2
 						this.needPostTinting = firstQuad.hasTintIndex();						
@@ -442,6 +447,13 @@ public class ClientBlockStateColorCache
 							firstQuad.materialInfo().sprite(),
 							EColorMode.getColorMode(this.blockState.getBlock()));
 						#endif
+						
+						// keep the usual part's alpha
+						if (untintedQuad != null)
+						{
+							int untintedColor = calculateColorFromTexture(ClientBlockStateTextureCache.getQuadSprite(untintedQuad), EColorMode.getColorMode(this.blockState.getBlock()));
+							this.baseColor = ColorUtil.setAlpha(this.baseColor, ColorUtil.getAlpha(untintedColor));
+						}
 					}
 					catch (Exception e)
 					{
@@ -503,6 +515,35 @@ public class ClientBlockStateColorCache
 	#if MC_VER > MC_1_7_10
 	@Nullable
 	private List<BakedQuad> getUnculledQuads() throws Exception { return this.getQuadsForDirection(null); }
+	/** @return null if none of the block's quads are tinted */
+	@Nullable
+	private BakedQuad findTintedQuad()
+	{
+		for (EDhDirection direction : COLOR_RESOLUTION_DIRECTION_ORDER)
+		{
+			try
+			{
+				List<BakedQuad> quads = this.getQuadsForDirection(direction);
+				if (quads == null)
+				{
+					continue;
+				}
+				
+				for (BakedQuad quad : quads)
+				{
+					if (ClientBlockStateTextureCache.isQuadTinted(quad))
+					{
+						return quad;
+					}
+				}
+			}
+			catch (Exception ignore)
+			{
+				// invalid blocks can fail to give quads
+			}
+		}
+		return null;
+	}
 	@Nullable
 	private List<BakedQuad> getQuadsForDirection(@Nullable EDhDirection direction) throws Exception
 	{
@@ -747,6 +788,16 @@ public class ClientBlockStateColorCache
 						tintColor = biomeWrapper.biome.getWaterColor();
 					}
 				}
+				else if (block instanceof IFluidBlock)
+				{
+					// Forge fluid blocks bake Fluid#getColor() into the model.
+					// Mods that share one texture across many fluids (ex: Tinkers' Construct) would otherwise get the same wrong color.
+					Fluid fluid = ((IFluidBlock) block).getFluid();
+					if (fluid != null)
+					{
+						tintColor = fluid.getColor();
+					}
+				}
 				else
 				{
 					BlockColors blockColors = Minecraft.getMinecraft().getBlockColors();
@@ -893,6 +944,8 @@ public class ClientBlockStateColorCache
 		
 		return returnColor;
 	}
+	
+	public boolean getNeedPostTinting() { return this.needPostTinting; }
 	
 	//endregion
 	

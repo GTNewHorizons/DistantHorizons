@@ -45,10 +45,16 @@ import net.minecraft.world.World;
 import net.minecraft.world.chunk.Chunk;
 import net.minecraft.world.chunk.storage.ExtendedBlockStorage;
 #else
+import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.core.BlockPos;
 import net.minecraft.world.level.chunk.ChunkAccess;
 import net.minecraft.world.level.chunk.ProtoChunk;
 import net.minecraft.world.level.levelgen.Heightmap;
+#endif
+
+#if MC_VER <= MC_1_7_10
+#elif MC_VER <= MC_1_12_2
+import net.minecraft.world.ChunkCache;
 #endif
 
 import com.seibel.distanthorizons.core.logging.DhLogger;
@@ -103,6 +109,12 @@ public class ChunkWrapper implements IChunkWrapper
 	
 	private static boolean heightmapThreadWarningLogged = false;
 	
+	#if MC_VER <= MC_1_7_10
+	#elif MC_VER <= MC_1_12_2
+	// We need to create ChunkCache so getActualState doesn't cause crash
+	private final ChunkCache chunkCache;
+	#endif
+	
 	#if MC_VER <= MC_1_12_2
 	private final Chunk chunk;
 	#else
@@ -127,6 +139,8 @@ public class ChunkWrapper implements IChunkWrapper
 	private int[][] solidHeightMap = null;
 	/** will be null if we are using MC heightmaps */
 	private int[][] lightBlockingHeightMap = null;
+	/** will be null if we are using MC heightmaps */
+	private int[][] nonAirHeightMap = null;
 	
 	#if MC_VER <= MC_1_7_10
 	private final BiomeGenBase[] biomeList;
@@ -161,16 +175,28 @@ public class ChunkWrapper implements IChunkWrapper
 		#else
 		this.chunkPos = new DhChunkPos(chunk.getPos().x(), chunk.getPos().z());
 		#endif
+		
+		#if MC_VER <= MC_1_7_10
+		#elif MC_VER <= MC_1_12_2
+		int minX = this.chunkPos.getMinBlockX();
+		int minZ = this.chunkPos.getMinBlockZ();
+		this.chunkCache = new ChunkCache(chunk.getWorld(), new BlockPos(minX, 0, minZ), new BlockPos(minX + 15, 255, minZ + 15), 0);
+		#endif
 	}
 	
-	#if MC_VER <= MC_1_7_10
+	#if MC_VER <= MC_1_12_2
 	/** used for copying */
 	private ChunkWrapper(ChunkWrapper that, ILevelWrapper wrappedLevel)
 	{
 		this.chunk = that.chunk;
 		this.wrappedLevel = wrappedLevel;
 		this.chunkPos = new DhChunkPos(that.chunkPos.getX(), that.chunkPos.getZ());
+        
+		#if MC_VER <= MC_1_7_10
 		this.biomeList = that.biomeList;
+        #else
+        this.chunkCache = that.chunkCache;
+        #endif
 	}
 	#endif
 	
@@ -182,7 +208,7 @@ public class ChunkWrapper implements IChunkWrapper
 	@Override
 	public ChunkWrapper copy()
 	{
-		#if MC_VER <= MC_1_7_10
+		#if MC_VER <= MC_1_12_2
 		return new ChunkWrapper(this, this.wrappedLevel);
 		#else
 		return new ChunkWrapper(this.chunk, this.wrappedLevel);
@@ -192,7 +218,7 @@ public class ChunkWrapper implements IChunkWrapper
 	@Override
 	public ChunkWrapper copyWithLevel(ILevelWrapper levelWrapper)
 	{
-		#if MC_VER <= MC_1_7_10
+		#if MC_VER <= MC_1_12_2
 		return new ChunkWrapper(this, levelWrapper);
 		#else
 		return new ChunkWrapper(this.chunk, levelWrapper);
@@ -385,6 +411,7 @@ public class ChunkWrapper implements IChunkWrapper
 		
 		this.solidHeightMap = new int[LodUtil.CHUNK_WIDTH][LodUtil.CHUNK_WIDTH];
 		this.lightBlockingHeightMap = new int[LodUtil.CHUNK_WIDTH][LodUtil.CHUNK_WIDTH];
+		this.nonAirHeightMap = new int[LodUtil.CHUNK_WIDTH][LodUtil.CHUNK_WIDTH];
 		
 		for (int x = 0; x < LodUtil.CHUNK_WIDTH; x++)
 		{
@@ -394,6 +421,7 @@ public class ChunkWrapper implements IChunkWrapper
 				// if no blocks are found the height map will be at the bottom of the world
 				int solidHeight = minInclusiveBuildHeight;
 				int lightBlockingHeight = minInclusiveBuildHeight;
+				int nonAirHeight = minInclusiveBuildHeight;
 				
 				
 				int y = this.getMaxNonEmptyHeight(); //this.getExclusiveMaxBuildHeight();
@@ -408,6 +436,13 @@ public class ChunkWrapper implements IChunkWrapper
 						)
 					)
 				{
+					// is this block anything but air?
+					if (nonAirHeight == minInclusiveBuildHeight
+						&& !block.isAir())
+					{
+						nonAirHeight = y;
+					}
+					
 					// is this block solid?
 					if (solidHeight == minInclusiveBuildHeight
 						&& block.isSolid())
@@ -429,6 +464,7 @@ public class ChunkWrapper implements IChunkWrapper
 				
 				this.solidHeightMap[x][z] = solidHeight;
 				this.lightBlockingHeightMap[x][z] = lightBlockingHeight;
+				this.nonAirHeightMap[x][z] = nonAirHeight;
 			}
 		}
 	}
@@ -471,6 +507,22 @@ public class ChunkWrapper implements IChunkWrapper
 		else
 		{
 			return this.lightBlockingHeightMap[xRel][zRel];
+		}
+	}
+	
+	@Override
+	public int getNonAirHeightMapValue(int xRel, int zRel)
+	{
+		this.throwIndexOutOfBoundsIfRelativePosOutsideChunkBounds(xRel, zRel);
+		
+		// without DH's heightmaps, use the highest of MC's
+		if (this.nonAirHeightMap == null)
+		{
+			return Math.max(this.getLightBlockingHeightMapValue(xRel, zRel), this.getSolidHeightMapValue(xRel, zRel));
+		}
+		else
+		{
+			return this.nonAirHeightMap[xRel][zRel];
 		}
 	}
 	
@@ -527,18 +579,26 @@ public class ChunkWrapper implements IChunkWrapper
 		}
 		#else
 		BlockPos.MutableBlockPos blockPos = MUTABLE_BLOCK_POS_REF.get();
-		
+
+		// world position is needed for debug worlds to get their blocks correctly
+		// regular MC worlds us a bitwise & to limit the position to a relative position
 		#if MC_VER <= MC_1_12_2
-		blockPos.setPos(relX, relY, relZ);
+		blockPos.setPos(this.chunkPos.getMinBlockX() + relX, relY, this.chunkPos.getMinBlockZ() + relZ);
 		#else
-		blockPos.setX(relX);
+		blockPos.setX(this.chunkPos.getMinBlockX() + relX);
 		blockPos.setY(relY);
-		blockPos.setZ(relZ);
+		blockPos.setZ(this.chunkPos.getMinBlockZ() + relZ);
 		#endif
 		
 		try
 		{
-			return BlockStateWrapper.fromBlockState(this.chunk.getBlockState(blockPos), this.wrappedLevel);
+			#if MC_VER <= MC_1_12_2
+			IBlockState blockState = this.chunk.getBlockState(blockPos);
+			blockState = blockState.getActualState(chunkCache, blockPos);
+			#else
+			BlockState blockState = this.chunk.getBlockState(blockPos);
+			#endif
+			return BlockStateWrapper.fromBlockState(blockState, this.wrappedLevel);
 		}
 		catch (Exception e)
 		{
@@ -575,17 +635,26 @@ public class ChunkWrapper implements IChunkWrapper
 		}
 		#else
 		BlockPos.MutableBlockPos pos = (BlockPos.MutableBlockPos)mcBlockPos.getWrappedMcObject();
+		
+		// world position is needed for debug worlds to get their blocks correctly
+		// regular MC worlds us a bitwise & to limit the position to a relative position
 		#if MC_VER <= MC_1_12_2
-		pos.setPos(relX, relY, relZ);
+		pos.setPos(this.chunkPos.getMinBlockX() + relX, relY, this.chunkPos.getMinBlockZ() + relZ);
 		#else
-		pos.setX(relX);
+		pos.setX(this.chunkPos.getMinBlockX() + relX);
 		pos.setY(relY);
-		pos.setZ(relZ);
+		pos.setZ(this.chunkPos.getMinBlockZ() + relZ);
 		#endif
 	
 		try
 		{
-			return BlockStateWrapper.fromBlockState(this.chunk.getBlockState(pos), this.wrappedLevel, guess);
+			#if MC_VER <= MC_1_12_2
+			IBlockState blockState = this.chunk.getBlockState(pos);
+			blockState = blockState.getActualState(chunkCache, pos);
+			#else
+			BlockState blockState = this.chunk.getBlockState(pos);
+			#endif
+			return BlockStateWrapper.fromBlockState(blockState, this.wrappedLevel);
 		}
 			catch (Exception e)
 		{
@@ -651,13 +720,17 @@ public class ChunkWrapper implements IChunkWrapper
 	 * convert it to an LOD. <br><br>
 	 * 
 	 * This method is only necessary for 1.7.10 since we handle
-	 * this logic in the save mixin for newer MC versions.
+	 * this logic in the save mixin for newer MC versions. <br><br>
+	 *
+	 * MC's light isn't required, DH bakes its own block lighting.
+	 * MC only marks the light as populated when the chunk is ticked,
+	 * which chunks DH loads for world gen aren't necessarily,
+	 * so blocks other chunks' population places into them could never reach the LODs.
 	 */
 	public static boolean canSaveChunk(Chunk chunk)
 	{
 		return chunk != null
-			&& chunk.isTerrainPopulated
-			&& chunk.isLightPopulated;
+			&& chunk.isTerrainPopulated;
 	}
 	#endif
 	

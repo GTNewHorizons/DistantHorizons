@@ -1,12 +1,14 @@
 package com.seibel.distanthorizons.common.render.openGl.terrain;
 
+import com.seibel.distanthorizons.api.enums.rendering.EDhApiTerrainRenderPass;
+import com.seibel.distanthorizons.api.enums.rendering.EDhApiTerrainVertexFormat;
 import com.seibel.distanthorizons.api.interfaces.override.rendering.IDhApiShaderProgram;
-import com.seibel.distanthorizons.api.interfaces.render.renderDef.IDhApiTerrainRenderer;
 import com.seibel.distanthorizons.api.interfaces.render.renderDef.objects.IDhApiTerrainBufferContainer;
 import com.seibel.distanthorizons.api.interfaces.render.renderDef.objects.IDhApiVertexBufferWrapper;
 import com.seibel.distanthorizons.api.methods.events.abstractEvents.*;
 import com.seibel.distanthorizons.api.methods.events.sharedParameterObjects.DhApiRenderParam;
 import com.seibel.distanthorizons.api.objects.math.DhApiVec3f;
+import com.seibel.distanthorizons.api.objects.math.DhApiVec3i;
 import com.seibel.distanthorizons.api.objects.util.IDhApiReadOnlyList;
 import com.seibel.distanthorizons.common.render.openGl.GlDhMetaRenderer;
 import com.seibel.distanthorizons.common.render.openGl.glObject.GLProxy;
@@ -16,11 +18,9 @@ import com.seibel.distanthorizons.common.render.openGl.glObject.vertexAttribute.
 import com.seibel.distanthorizons.common.render.openGl.glObject.vertexAttribute.GlVertexAttributePostGL43;
 import com.seibel.distanthorizons.common.render.openGl.glObject.vertexAttribute.GlVertexAttributePreGL43;
 import com.seibel.distanthorizons.common.render.openGl.glObject.vertexAttribute.GlVertexPointer;
-import com.seibel.distanthorizons.common.render.openGl.util.vertexFormat.GlLodVertexFormat;
 import com.seibel.distanthorizons.common.wrappers.minecraft.MinecraftGLWrapper;
 import com.seibel.distanthorizons.common.wrappers.misc.LightMapWrapper;
 import com.seibel.distanthorizons.core.config.Config;
-import com.seibel.distanthorizons.core.dataObjects.render.bufferBuilding.LodBufferContainer;
 import com.seibel.distanthorizons.core.dataObjects.render.bufferBuilding.LodQuadBuilder;
 import com.seibel.distanthorizons.core.dependencyInjection.ModAccessorInjector;
 import com.seibel.distanthorizons.core.dependencyInjection.SingletonInjector;
@@ -36,8 +36,6 @@ import com.seibel.distanthorizons.core.wrapperInterfaces.modAccessor.IIrisAccess
 import com.seibel.distanthorizons.coreapi.DependencyInjection.ApiEventInjector;
 import org.lwjgl.opengl.GL11;
 import org.lwjgl.opengl.GL14;
-
-import java.util.List;
 
 import static com.seibel.distanthorizons.lwjgl.LWJGLServiceProvider.LWJGL;
 
@@ -63,7 +61,11 @@ public class GlDhTerrainShaderProgram extends GlShaderProgram implements IDhApiS
 	
 	private boolean init = false;
 	
-	public GlAbstractVertexAttribute vao;
+	/** one for each vertex format, see EDhApiTerrainVertexFormat */
+	private GlAbstractVertexAttribute noOffsetVao;
+	private GlAbstractVertexAttribute offsetVao;
+	/** set from the render parameters each frame */
+	private EDhApiTerrainVertexFormat vertexFormat = EDhApiTerrainVertexFormat.POS_META_COLOR_MATERIAL_NORMAL_TEXTURE;
 	
 	/** used for TAA jitter, the 8 represents how many jitter points are available */
 	private int frameIndexMod8 = 0;
@@ -100,6 +102,8 @@ public class GlDhTerrainShaderProgram extends GlShaderProgram implements IDhApiS
 	// Debug Uniform
 	public int uIsWhiteWorld = -1;
 	
+	public int uHasOffsetData = -1;
+	
 	//endregion
 	
 	
@@ -114,7 +118,7 @@ public class GlDhTerrainShaderProgram extends GlShaderProgram implements IDhApiS
 		super(
 			"assets/distanthorizons/shaders/terrain/gl/vert.vert",
 			"assets/distanthorizons/shaders/terrain/gl/frag.frag",
-			new String[]{"vPosition", "color", "irisData"}
+			new String[]{"vPosition", "color", "irisData", "offsetData", "uvNormal"}
 		);
 	}
 	
@@ -152,40 +156,53 @@ public class GlDhTerrainShaderProgram extends GlShaderProgram implements IDhApiS
 		// Debug Uniform
 		this.uIsWhiteWorld = this.getUniformLocation("uIsWhiteWorld");
 		
+		this.uHasOffsetData = this.getUniformLocation("uHasOffsetData");
 		
-		if (GLProxy.getInstance().vertexAttributeBufferBindingSupported)
-		{
-			this.vao = new GlVertexAttributePostGL43(); // also binds AbstractVertexAttribute
-		}
-		else
-		{
-			this.vao = new GlVertexAttributePreGL43(); // also binds AbstractVertexAttribute
-		}
-		this.vao.bind();
+		
+		this.noOffsetVao = createVao(EDhApiTerrainVertexFormat.POS_META_COLOR_MATERIAL_NORMAL_TEXTURE);
+		this.offsetVao = createVao(EDhApiTerrainVertexFormat.POS_META_COLOR_MATERIAL_NORMAL_TEXTURE_OFFSET);
+		
+		this.init = true;
+	}
+	private static GlAbstractVertexAttribute createVao(EDhApiTerrainVertexFormat vertexFormat)
+	{
+		GlAbstractVertexAttribute vao = GLProxy.getInstance().vertexAttributeBufferBindingSupported
+			? new GlVertexAttributePostGL43() // also binds AbstractVertexAttribute
+			: new GlVertexAttributePreGL43(); // also binds AbstractVertexAttribute
+		vao.bind();
 		
 		// short: x, y, z, meta
 		//      meta: byte skylight, byte blocklight, byte microOffset
-		this.vao.setVertexAttribute(0, 0, GlVertexPointer.addUnsignedShortsPointer(4, false, true));
+		vao.setVertexAttribute(0, 0, GlVertexPointer.addUnsignedShortsPointer(4, false, true));
 		// byte: r, g, b, a
-		this.vao.setVertexAttribute(0, 1, GlVertexPointer.addUnsignedBytesPointer(4, true, false));
+		vao.setVertexAttribute(0, 1, GlVertexPointer.addUnsignedBytesPointer(4, true, false));
 		// byte: iris material ID, normal index, 2 spacers
-		this.vao.setVertexAttribute(0, 2, GlVertexPointer.addUnsignedBytesPointer(4, true, true));
+		vao.setVertexAttribute(0, 2, GlVertexPointer.addUnsignedBytesPointer(4, true, true));
+		if (vertexFormat == EDhApiTerrainVertexFormat.POS_META_COLOR_MATERIAL_NORMAL_TEXTURE_OFFSET)
+		{
+			// byte: offset x, y, z (256ths of a block), flags
+			vao.setVertexAttribute(0, 3, GlVertexPointer.addUnsignedBytesPointer(4, false, true));
+			// byte: u, v, normal (2 bytes)
+			vao.setVertexAttribute(0, 4, GlVertexPointer.addUnsignedBytesPointer(4, false, true));
+		}
 		
 		try
 		{
-			int vertexByteCount = GlLodVertexFormat.DH_VERTEX_FORMAT.getByteSize();
-			this.vao.completeAndCheck(vertexByteCount);
+			vao.completeAndCheck(vertexFormat.bytesPerVertex);
 		}
 		catch (RuntimeException e)
 		{
-			System.out.println(GlLodVertexFormat.DH_VERTEX_FORMAT);
+			System.out.println(vertexFormat);
 			throw e;
 		}
 		
 		// unbinding here is necessary to fix an issue when running on Legacy GL
-		this.vao.unbind();
-		
-		this.init = true;
+		vao.unbind();
+		return vao;
+	}
+	private GlAbstractVertexAttribute getVao()
+	{
+		return (this.vertexFormat == EDhApiTerrainVertexFormat.POS_META_COLOR_MATERIAL_NORMAL_TEXTURE_OFFSET) ? this.offsetVao : this.noOffsetVao;
 	}
 	
 	//endregion
@@ -202,28 +219,32 @@ public class GlDhTerrainShaderProgram extends GlShaderProgram implements IDhApiS
 	{
 		this.tryInit();
 		super.bind();
-		this.vao.bind();
+		this.getVao().bind();
 	}
 	@Override
 	public void unbind()
 	{
 		super.unbind();
-		this.vao.unbind();
+		this.getVao().unbind();
 	}
 	
 	@Override
 	public void free()
 	{
-		this.vao.free();
+		this.noOffsetVao.free();
+		this.offsetVao.free();
 		super.free();
 	}
 	
 	@Override
-	public void bindVertexBuffer(int vbo) { this.vao.bindBufferToAllBindingPoints(vbo); }
+	public void bindVertexBuffer(int vbo) { this.getVao().bindBufferToAllBindingPoints(vbo); }
 	
 	@Override
 	public void fillUniformData(DhApiRenderParam renderParameters)
 	{
+		// the format changes when a shader pack is turned on or off
+		this.vertexFormat = renderParameters.renderDefinition.getTerrainVertexFormat();
+		
 		DhMat4f combinedMatrix = new DhMat4f(renderParameters.dhProjectionMatrix);
 		combinedMatrix.multiply(renderParameters.dhModelViewMatrix);
 		
@@ -288,6 +309,7 @@ public class GlDhTerrainShaderProgram extends GlShaderProgram implements IDhApiS
 		
 		// Debug
 		this.setUniform(this.uIsWhiteWorld, Config.Client.Advanced.Debugging.enableWhiteWorld.get());
+		this.setUniform(this.uHasOffsetData, (this.vertexFormat == EDhApiTerrainVertexFormat.POS_META_COLOR_MATERIAL_NORMAL_TEXTURE_OFFSET));
 		
 		// Clip Uniform
 		float dhNearClipDistance = RenderUtil.getNearClipPlaneInBlocks();
@@ -319,9 +341,11 @@ public class GlDhTerrainShaderProgram extends GlShaderProgram implements IDhApiS
 	//region
 	
 	public void render(
-		RenderParam renderEventParam, boolean opaquePass,
+		RenderParam renderEventParam, EDhApiTerrainRenderPass renderPass,
 		IDhApiReadOnlyList<? extends IDhApiTerrainBufferContainer> bufferContainers)
 	{
+		boolean opaquePass = (renderPass != EDhApiTerrainRenderPass.TRANSPARENT);
+		
 		//=======================//
 		// debug wireframe setup //
 		//=======================//
@@ -378,31 +402,39 @@ public class GlDhTerrainShaderProgram extends GlShaderProgram implements IDhApiS
 		{
 			for (int lodIndex = 0; lodIndex < bufferContainers.size(); lodIndex++)
 			{
-				IDhApiTerrainBufferContainer apiBufferContainer = bufferContainers.get(lodIndex); 
-				LodBufferContainer bufferContainer = (LodBufferContainer)apiBufferContainer;
-				if (!bufferContainer.buffersUploaded)
-				{
-					// make sure we don't accidentally try
-					// rendering a buffer that is (or is going to be) freed 
-					continue;
-				}
+				// the containers are sorted near to far, transparent LODs need to be drawn far to near
+				// so closer transparent LODs don't depth-cull the ones behind them
+				int containerIndex = opaquePass ? lodIndex : (bufferContainers.size() - 1 - lodIndex);
+				IDhApiTerrainBufferContainer apiBufferContainer = bufferContainers.get(containerIndex);
 				
 				// set uniforms and fire events
 				{
+					DhApiVec3i minCornerBlockPos = apiBufferContainer.getMinCornerBlockPos();
 					DhVec3d camPos = renderEventParam.exactCameraPosition;
 					MODEL_POS.set(
-						(float) (bufferContainer.minCornerBlockPos.getX() - camPos.x),
-						(float) (bufferContainer.minCornerBlockPos.getY() - camPos.y),
-						(float) (bufferContainer.minCornerBlockPos.getZ() - camPos.z));
+						(float) (minCornerBlockPos.x - camPos.x),
+						(float) (minCornerBlockPos.y - camPos.y),
+						(float) (minCornerBlockPos.z - camPos.z));
 					BEFORE_BUFFER_RENDER_EVENT_PARAM.update(renderEventParam, MODEL_POS);
 					
 					GlDhMetaRenderer.INSTANCE.shaderProgramForThisFrame.bind();
 					GlDhMetaRenderer.INSTANCE.shaderProgramForThisFrame.setModelOffsetPos(MODEL_POS);
 					
 					ApiEventInjector.INSTANCE.fireAllEvents(DhApiBeforeBufferRenderEvent.class, BEFORE_BUFFER_RENDER_EVENT_PARAM);
+					BEFORE_BUFFER_RENDER_EVENT_PARAM.clearLevelReferences();
 				}
 				
-				IDhApiVertexBufferWrapper[] vertexBuffers = (opaquePass ? bufferContainer.getVboOpaqueWrappers() : bufferContainer.getVboTransparentWrappers());
+				IDhApiVertexBufferWrapper[] vertexBuffers;
+				if (!opaquePass)
+				{
+					vertexBuffers = apiBufferContainer.getVboTransparentWrappers();
+				}
+				else
+				{
+					vertexBuffers = (renderPass == EDhApiTerrainRenderPass.OPAQUE_WITHOUT_SSAO)
+						? apiBufferContainer.getVboWithoutSsaoWrappers() 
+						: apiBufferContainer.getVboOpaqueWrappers();
+				}
 				for (int vboIndex = 0; vboIndex < vertexBuffers.length; vboIndex++)
 				{
 					GLVertexBuffer vbo = (GLVertexBuffer) vertexBuffers[vboIndex];

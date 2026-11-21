@@ -311,7 +311,7 @@ class DhConfigScreen extends DhScreen
 	}
 	private void addMenuItem(AbstractConfigBase<?> configEntry)
 	{
-		trySetupConfigEntry(configEntry);
+		this.trySetupConfigEntry(configEntry);
 		
 		if (this.tryCreateInputField(configEntry)) return;
 		if (this.tryCreateCategoryButton(configEntry)) return;
@@ -323,7 +323,7 @@ class DhConfigScreen extends DhScreen
 		LOGGER.warn("Config [" + configEntry.getNameAndCategory() + "] failed to show. Please try something like changing its type.");
 	}
 	
-	private static void trySetupConfigEntry(AbstractConfigBase<?> configMenuOption)
+	private void trySetupConfigEntry(AbstractConfigBase<?> configMenuOption)
 	{
 		configMenuOption.guiValue = new ConfigGuiInfo();
 		Class<?> configValueClass = configMenuOption.getType();
@@ -352,7 +352,7 @@ class DhConfigScreen extends DhScreen
 			else if (configValueClass == Boolean.class)
 			{
 				ConfigEntry<Boolean> booleanConfigEntry = (ConfigEntry<Boolean>) configEntry;
-				setupBooleanMenuOption(booleanConfigEntry);
+				this.setupBooleanMenuOption(booleanConfigEntry);
 			}
 			else if (configValueClass.isEnum())
 			{
@@ -443,7 +443,7 @@ class DhConfigScreen extends DhScreen
 					return true;
 				};
 	}
-	private static void setupBooleanMenuOption(ConfigEntry<Boolean> booleanConfigEntry)
+	private void setupBooleanMenuOption(ConfigEntry<Boolean> booleanConfigEntry)
 	{
 		// For boolean
 		#if MC_VER <= MC_1_7_10
@@ -473,6 +473,19 @@ class DhConfigScreen extends DhScreen
 					#endif
 					
 					booleanConfigEntry.uiSetWithoutSaving(!booleanConfigEntry.get());
+					
+					// update options that depend on this one
+					for (AbstractConfigBase<?> configBase : ConfigHandler.INSTANCE.configBaseList)
+					{
+						if (configBase instanceof ConfigEntry
+							&& ((ConfigEntry<?>) configBase).getOnlyEnabledWhen() == booleanConfigEntry
+							&& configBase.getCategory().matches(this.category))
+						{
+							this.reload = true;
+							DhScreenUtil.setScreen(this);
+							return;
+						}
+					}
 					
 					#if MC_VER <= MC_1_7_10
 					button.displayString = func.apply(booleanConfigEntry.get());
@@ -607,6 +620,10 @@ class DhConfigScreen extends DhScreen
 		{
 			ConfigEntry configEntry = (ConfigEntry) configBase;
 			
+			// greyed out while the option it depends on is off
+			ConfigEntry<Boolean> onlyEnabledWhen = ((ConfigEntry<?>) configBase).getOnlyEnabledWhen();
+			boolean disabledByOtherOption = (onlyEnabledWhen != null && !onlyEnabledWhen.get());
+			
 			
 			//==============//
 			// reset button //
@@ -615,7 +632,11 @@ class DhConfigScreen extends DhScreen
 			
 			#if MC_VER <= MC_1_12_2 OnPressed #else Button.OnPress #endif btnAction = (button) ->
 			{
-				configEntry.uiSetWithoutSaving(configEntry.getDefaultValue());
+				// already at its default
+				if (!configEntry.getDefaultValue().equals(configEntry.getTrueValue()))
+				{
+					configEntry.uiSetWithoutSaving(configEntry.getDefaultValue());
+				}
 				this.reload = true;
 				DhScreenUtil.setScreen(this);
 			};
@@ -668,9 +689,9 @@ class DhConfigScreen extends DhScreen
 			else
 			{
 				#if MC_VER <= MC_1_12_2
-				resetButton.enabled = true;
+				resetButton.enabled = !disabledByOtherOption;
 				#else
-				resetButton.active = true;
+				resetButton.active = !disabledByOtherOption;
 				#endif
 			}
 			
@@ -725,10 +746,12 @@ class DhConfigScreen extends DhScreen
 					widget.getKey());
 				
 				
-				// deactivate the button if the API is overriding it
-				// or the MC version doesn't support it
+				// deactivate the button if the API is overriding it,
+				// the MC version doesn't support it
+				// or the option it depends on is off
 				if (configEntry.mcVersionOverridePresent()
-					|| configEntry.apiIsOverriding())
+					|| configEntry.apiIsOverriding()
+					|| disabledByOtherOption)
 				{
 					#if MC_VER <= MC_1_12_2
 					button.enabled = false;
@@ -1152,7 +1175,11 @@ class DhConfigScreen extends DhScreen
 					
 					if (btn.mousePressed(this.mc, mouseX, mouseY))
 					{
+						#if MC_VER <= MC_1_7_10
+						btn.func_146113_a(this.mc.getSoundHandler()); // playPressSound
+						#elif MC_VER <= MC_1_12_2
 						btn.playPressSound(this.mc.getSoundHandler());
+						#endif
 						
 						OnPressed handler = GuiHelper.HANDLER_BY_BUTTON.get(btn);
 						if (handler != null)
@@ -1175,7 +1202,11 @@ class DhConfigScreen extends DhScreen
 					
 					if (reset.mousePressed(this.mc, mouseX, mouseY))
 					{
+						#if MC_VER <= MC_1_7_10
+						reset.func_146113_a(this.mc.getSoundHandler()); // playPressSound
+						#elif MC_VER <= MC_1_12_2
 						reset.playPressSound(this.mc.getSoundHandler());
+						#endif
 						
 						OnPressed handler = GuiHelper.HANDLER_BY_BUTTON.get(reset);
 						if (handler != null)

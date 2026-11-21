@@ -91,6 +91,9 @@ public class ChunkPos
 		}
 	}
 	
+	@Override
+	public String toString() { return "[" + this.x + ", " + this.z + "]"; }
+	
 	//endregion
 	
 	

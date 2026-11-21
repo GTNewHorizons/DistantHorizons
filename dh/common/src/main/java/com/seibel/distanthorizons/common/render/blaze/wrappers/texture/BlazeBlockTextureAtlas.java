@@ -24,13 +24,13 @@ public class BlazeBlockTextureAtlas {}
 
 #else
 
-import com.seibel.distanthorizons.core.dataObjects.render.textures.BlockTextureRegistry;
-import com.seibel.distanthorizons.core.render.AbstractBlockTextureAtlas;
+import com.seibel.distanthorizons.api.interfaces.render.renderDef.IDhApiBlockTextureAtlas;
+import com.seibel.distanthorizons.core.dataObjects.render.textures.BlockRenderRegistry;
+import com.seibel.distanthorizons.core.render.DhBlockTextureAtlasUploadHandler;
 import com.seibel.distanthorizons.core.util.objects.pooling.PhantomArrayList.PhantomArrayListCheckout;
 import com.seibel.distanthorizons.core.util.objects.pooling.PhantomArrayList.PhantomArrayListPool;
 import com.seibel.distanthorizons.coreapi.util.BitShiftUtil;
 import com.seibel.distanthorizons.coreapi.util.TextureUtil;
-import org.lwjgl.opengl.GL32;
 
 import java.nio.ByteBuffer;
 
@@ -39,15 +39,15 @@ import java.nio.ByteBuffer;
  *
  * Blaze3D doesn't support array textures yet, so unlike the OpenGL atlas
  * the tiles are packed into a 2D grid texture
- * with {@link BlazeBlockTextureAtlas#TILES_PER_ROW} tiles per row,
+ * with {@link DhBlockTextureAtlasUploadHandler#TILES_PER_ROW} tiles per row,
  * growing downward as more tiles are registered.
  * The fragment shader locates a tile via its id and the texture's size,
  * so no extra uniforms are needed.
  *
- * @see BlockTextureRegistry
+ * @see BlockRenderRegistry
  * @see com.seibel.distanthorizons.common.render.openGl.terrain.GlBlockTextureAtlas
  */
-public class BlazeBlockTextureAtlas extends AbstractBlockTextureAtlas
+public class BlazeBlockTextureAtlas implements IDhApiBlockTextureAtlas
 {
 	public static final BlazeBlockTextureAtlas INSTANCE = new BlazeBlockTextureAtlas();
 	
@@ -74,7 +74,7 @@ public class BlazeBlockTextureAtlas extends AbstractBlockTextureAtlas
 	//region
 	
 	@Override 
-	protected void tryCreateOrResize(int width, int height) { this.textureWrapper.tryCreateOrResize(width, height); }
+	public void tryCreateOrResize(int width, int height) { this.textureWrapper.tryCreateOrResize(width, height); }
 	
 	public BlazeTextureWrapper getTextureWrapper() { return this.textureWrapper; }
 	
@@ -88,10 +88,10 @@ public class BlazeBlockTextureAtlas extends AbstractBlockTextureAtlas
 	//region
 	
 	@Override
-	protected void beforeWriteToTexture() { /* no setup required */ }
+	public void beforeWriteToTexture() { /* no setup required */ }
 	
 	@Override
-	protected void writeToTexture(ByteBuffer pixelBuffer, int destinationX, int destinationY, int tileWidth, int tileHeight)
+	public void writeToTexture(ByteBuffer pixelBuffer, int destinationX, int destinationY, int tileWidth, int tileHeight)
 	{
 		if (tileWidth != tileHeight)
 		{
@@ -172,7 +172,7 @@ public class BlazeBlockTextureAtlas extends AbstractBlockTextureAtlas
 	}
 	
 	@Override
-	protected void afterWriteToTexture() { /* no cleanup required */ }
+	public void afterWriteToTexture() { /* no cleanup required */ }
 	
 	//endregion
 	

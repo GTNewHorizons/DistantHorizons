@@ -115,7 +115,8 @@ public class BlazeDhGenericObjectRenderer implements IDhApiGenericRenderer
 	
 	private BlazeDhGenericObjectRenderer() { }
 	
-	public void init(DhApiRenderParam renderEventParam)
+	@Override
+	public void preRender(DhApiRenderParam renderEventParam)
 	{
 		if (this.init)
 		{
@@ -175,195 +176,71 @@ public class BlazeDhGenericObjectRenderer implements IDhApiGenericRenderer
 	//===========//
 	//region
 	
-	/**
-	 * @param renderingWithSsao 
-	 *      if true that means this render call is happening before the SSAO pass
-     *      and any objects rendered in this pass will have SSAO applied to them.
-	 */
 	@Override
-	public void render(
-		DhApiRenderParam apiRenderEventParam, 
-		IDhApiCustomRenderRegister renderRegister, boolean renderingWithSsao)
+	public void render(DhApiRenderParam apiRenderEventParam, IDhApiRenderableBoxGroup boxGroup)
 	{
 		RenderParam renderEventParam = (RenderParam)apiRenderEventParam;
-		IProfilerWrapper profiler = renderEventParam.profiler;
 		
-		try (IProfilerWrapper.IProfileBlock generic_profile = profiler.push("setup"))
+		DhApiRenderableBoxGroupShading shading = boxGroup.getShading();
+		if (shading == null)
 		{
+			shading = DEFAULT_SHADING;
+		}
+		
+		
+		
+		// uniforms //
+		{
+			// create data //
 			
-			
-			//==============//
-			// render setup //
-			//==============//
-			//#region
-			
-			this.init(apiRenderEventParam);
-			
-			ApiEventInjector.INSTANCE.fireAllEvents(DhApiBeforeGenericRenderSetupEvent.class, renderEventParam.apiCopy);
+			DhMat4f projectionMvmMatrix = new DhMat4f(renderEventParam.dhProjectionMatrix);
+			projectionMvmMatrix.multiply(renderEventParam.dhModelViewMatrix);
 			
 			DhVec3d camPos = MC_RENDER.getCameraExactPosition();
 			
-			//#endregion
 			
-			if (BlazeDhMetaRenderer.INSTANCE.dhColorTextureWrapper.isEmpty()
-				|| BlazeDhMetaRenderer.INSTANCE.dhDepthTextureWrapper.isEmpty())
-			{
-				return;
-			}
+			// upload data //
 			
-			
-			
-			//===========//
-			// rendering //
-			//===========//
-			//#region
-			
-			Collection<? extends IDhApiRenderableBoxGroup> boxList = renderRegister.getRenderBoxList();
-			for (IDhApiRenderableBoxGroup apiBoxGroup : boxList)
-			{
-				RenderableBoxGroup boxGroup = (RenderableBoxGroup)apiBoxGroup;
+			this.vertUniformBufferWrapper
+				.putVec3i(
+					LodUtil.getChunkPosFromDouble(boxGroup.getOriginBlockPos().x),
+					LodUtil.getChunkPosFromDouble(boxGroup.getOriginBlockPos().y),
+					LodUtil.getChunkPosFromDouble(boxGroup.getOriginBlockPos().z)
+				) // uOffsetChunk
+				.putVec3f(
+					LodUtil.getSubChunkPosFromDouble(boxGroup.getOriginBlockPos().x),
+					LodUtil.getSubChunkPosFromDouble(boxGroup.getOriginBlockPos().y),
+					LodUtil.getSubChunkPosFromDouble(boxGroup.getOriginBlockPos().z)
+				) // uOffsetSubChunk
+				.putVec3i(
+					LodUtil.getChunkPosFromDouble(camPos.x),
+					LodUtil.getChunkPosFromDouble(camPos.y),
+					LodUtil.getChunkPosFromDouble(camPos.z)
+				) // uCameraPosChunk
+				.putVec3f(
+					LodUtil.getSubChunkPosFromDouble(camPos.x),
+					LodUtil.getSubChunkPosFromDouble(camPos.y),
+					LodUtil.getSubChunkPosFromDouble(camPos.z)
+				) // uCameraPosSubChunk
 				
-				// validation //
+				.putMat4f(projectionMvmMatrix) // uProjectionMvm
+				.putInt(boxGroup.getSkyLight()) // uSkyLight
+				.putInt(boxGroup.getBlockLight()) // uBlockLight
 				
-				// shouldn't happen, but just in case
-				if (boxGroup == null)
-				{
-					continue;
-				}
+				.putFloat(shading.north)
+				.putFloat(shading.south)
+				.putFloat(shading.east)
+				.putFloat(shading.west)
+				.putFloat(shading.top)
+				.putFloat(shading.bottom)
 				
-				// skip boxes that shouldn't render this pass
-				if (boxGroup.ssaoEnabled != renderingWithSsao)
-				{
-					continue;
-				}
-				
-				profiler.popPush("render prep");
-				boxGroup.preRender(renderEventParam); // called even if the group is inactive, so the group can be activate if desired
-				
-				// ignore inactive groups
-				if (!boxGroup.active)
-				{
-					continue;
-				}
-				
-				// allow API users to cancel this object's rendering
-				EVENT_PARAM.update(renderEventParam, boxGroup);
-				boolean cancelRendering = ApiEventInjector.INSTANCE.fireAllEvents(DhApiBeforeGenericObjectRenderEvent.class, EVENT_PARAM);
-				if (cancelRendering)
-				{
-					continue;
-				}
-				
-				// update instanced data if needed
-				{
-					boxGroup.tryUpdateInstancedDataAsync(apiRenderEventParam);
-					
-					// skip groups that haven't been uploaded yet
-					if (boxGroup.vertexBufferContainer.getState() != IDhApiGenericObjectVertexBufferContainer.EState.RENDER)
-					{
-						continue;
-					}
-				}
-				
-				
-				DhApiRenderableBoxGroupShading shading = boxGroup.shading;
-				if (shading == null)
-				{
-					shading = DEFAULT_SHADING;
-				}
-				
-				// uniforms
-				{
-					// create data //
-					
-					DhMat4f projectionMvmMatrix = new DhMat4f(renderEventParam.dhProjectionMatrix);
-					projectionMvmMatrix.multiply(renderEventParam.dhModelViewMatrix);
-					
-					
-					// upload data //
-					
-					this.vertUniformBufferWrapper
-						.putVec3i(
-							LodUtil.getChunkPosFromDouble(boxGroup.getOriginBlockPos().x),
-							LodUtil.getChunkPosFromDouble(boxGroup.getOriginBlockPos().y),
-							LodUtil.getChunkPosFromDouble(boxGroup.getOriginBlockPos().z)
-						) // uOffsetChunk
-						.putVec3f(
-							LodUtil.getSubChunkPosFromDouble(boxGroup.getOriginBlockPos().x),
-							LodUtil.getSubChunkPosFromDouble(boxGroup.getOriginBlockPos().y),
-							LodUtil.getSubChunkPosFromDouble(boxGroup.getOriginBlockPos().z)
-						) // uOffsetSubChunk
-						.putVec3i(
-							LodUtil.getChunkPosFromDouble(camPos.x),
-							LodUtil.getChunkPosFromDouble(camPos.y),
-							LodUtil.getChunkPosFromDouble(camPos.z)
-						) // uCameraPosChunk
-						.putVec3f(
-							LodUtil.getSubChunkPosFromDouble(camPos.x),
-							LodUtil.getSubChunkPosFromDouble(camPos.y),
-							LodUtil.getSubChunkPosFromDouble(camPos.z)
-						) // uCameraPosSubChunk
-						
-						.putMat4f(projectionMvmMatrix) // uProjectionMvm
-						.putInt(boxGroup.getSkyLight()) // uSkyLight
-						.putInt(boxGroup.getBlockLight()) // uBlockLight
-						
-						.putFloat(shading.north)
-						.putFloat(shading.south)
-						.putFloat(shading.east)
-						.putFloat(shading.west)
-						.putFloat(shading.top)
-						.putFloat(shading.bottom)
-						
-						.finishAndUpload()
-					;
-				}
-				
-				
-				
-				// render //
-				
-				profiler.popPush("rendering");
-				try (IProfilerWrapper.IProfileBlock namespace_profile = profiler.push(boxGroup.getResourceLocationNamespace());
-					IProfilerWrapper.IProfileBlock location_profile = profiler.push(boxGroup.getResourceLocationPath()))
-				{
-					this.renderBoxGroupInstanced(renderEventParam, boxGroup);
-				}
-				
-				boxGroup.postRender(renderEventParam);
-			}
-			
-			//#endregion
-			
-			
-			
-			//==========//
-			// clean up //
-			//==========//
-			//region
-			
-			profiler.popPush("cleanup");
-			
-			ApiEventInjector.INSTANCE.fireAllEvents(DhApiBeforeGenericRenderCleanupEvent.class, renderEventParam);
-			
-			//endregion
+				.finishAndUpload()
+			;
 		}
-	}
-	private String getRenderPassName() { return "distantHorizons:GenericObjectRenderer"; }
-	
-	//endregion
-	
-	
-	
-	//=====================//
-	// instanced rendering //
-	//=====================//
-	//region
-	
-	private void renderBoxGroupInstanced(
-		RenderParam renderEventParam, 
-		RenderableBoxGroup boxGroup)
-	{
+		
+		
+		
+		// rendering //
 		try (RenderPassWrapper renderPassWrapper = new RenderPassWrapper(
 			this::getRenderPassName,
 			BlazeDhMetaRenderer.INSTANCE.dhColorTextureWrapper,
@@ -372,7 +249,7 @@ public class BlazeDhGenericObjectRenderer implements IDhApiGenericRenderer
 			
 			// update instance data //
 			
-			BlazeGenericObjectVertexContainer container = (BlazeGenericObjectVertexContainer) boxGroup.vertexBufferContainer;
+			BlazeGenericObjectVertexContainer vertexContainer = (BlazeGenericObjectVertexContainer) boxGroup.getRenderVertexBufferContainer();
 			
 			LightMapWrapper lightMapWrapper = (LightMapWrapper) renderEventParam.lightmap;
 			BlazeTextureViewWrapper lightmapTextureViewWrapper = lightMapWrapper.getTextureViewWrapper();
@@ -382,22 +259,28 @@ public class BlazeDhGenericObjectRenderer implements IDhApiGenericRenderer
 			
 			// Bind instance data //
 			
-			
 			renderPassWrapper.setUniform("vertUniformBlock", this.vertUniformBufferWrapper);
 			
 			// set pipeline
 			renderPassWrapper.setPipeline(this.pipeline);
-			renderPassWrapper.setIndexBuffer(container.indexGpuBuffer);
+			renderPassWrapper.setIndexBuffer(vertexContainer.indexGpuBuffer);
 			
-			renderPassWrapper.setVertexBuffer(container.vboGpuBuffer);
+			renderPassWrapper.setVertexBuffer(vertexContainer.vboGpuBuffer);
 			
 			// Draw instanced
-			if (container.uploadedBoxCount > 0)
+			if (vertexContainer.uploadedBoxCount > 0)
 			{
 				// 36 = 6 faces * 6 verticies per face
-				renderPassWrapper.drawIndexed(container.uploadedBoxCount * 36);
+				renderPassWrapper.drawIndexed(vertexContainer.uploadedBoxCount * 36);
 			}
 		}
+	}
+	private String getRenderPassName() { return "distantHorizons:GenericObjectRenderer"; }
+	
+	@Override 
+	public void postRender(DhApiRenderParam renderEventParam)
+	{
+		
 	}
 	
 	//endregion

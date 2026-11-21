@@ -30,6 +30,7 @@ import com.seibel.distanthorizons.common.wrappers.world.ClientLevelWrapper;
 import com.seibel.distanthorizons.common.wrappers.world.ServerLevelWrapper;
 import com.seibel.distanthorizons.core.dependencyInjection.ModAccessorInjector;
 import com.seibel.distanthorizons.core.file.structure.ClientOnlySaveStructure;
+import com.seibel.distanthorizons.core.pos.blockPos.DhBlockPosMutable;
 import com.seibel.distanthorizons.core.render.RenderThreadTaskHandler;
 import com.seibel.distanthorizons.core.wrapperInterfaces.modAccessor.IImmersivePortalsAccessor;
 import com.seibel.distanthorizons.core.wrapperInterfaces.world.IClientLevelWrapper;
@@ -42,6 +43,7 @@ import com.seibel.distanthorizons.core.wrapperInterfaces.minecraft.IProfilerWrap
 import com.seibel.distanthorizons.core.pos.blockPos.DhBlockPos;
 import com.seibel.distanthorizons.core.pos.DhChunkPos;
 import com.seibel.distanthorizons.core.logging.DhLogger;
+import com.seibel.distanthorizons.coreapi.util.BitShiftUtil;
 
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.multiplayer.ServerData;
@@ -163,7 +165,9 @@ public class MinecraftClientWrapper extends AbstractMinecraftSharedWrapper imple
 	
 	private boolean hasServerConnection()
 	{
-		#if MC_VER <= MC_1_12_2
+		#if MC_VER <= MC_1_7_10
+		return MINECRAFT.func_147104_D() != null; // getCurrentServerData
+		#elif MC_VER <= MC_1_12_2
 		return MINECRAFT.getCurrentServerData() != null;
 		#else
 		return MINECRAFT.getCurrentServer() != null; 
@@ -181,7 +185,7 @@ public class MinecraftClientWrapper extends AbstractMinecraftSharedWrapper imple
 		else
 		{
 			#if MC_VER <= MC_1_7_10
-			ServerData server = MINECRAFT.getCurrentServerData();
+			ServerData server = MINECRAFT.func_147104_D(); // getCurrentServerData
 			return (server != null && server.serverName != null) ? server.serverName : "NULL";
 			#elif MC_VER <= MC_1_12_2
 			ServerData server = MINECRAFT.getCurrentServerData();
@@ -214,7 +218,9 @@ public class MinecraftClientWrapper extends AbstractMinecraftSharedWrapper imple
 	
 	private ServerData getCurrentServerData()
 	{
-		#if MC_VER <= MC_1_12_2
+		#if MC_VER <= MC_1_7_10
+		return MINECRAFT.func_147104_D(); // getCurrentServerData
+		#elif MC_VER <= MC_1_12_2
 		return MINECRAFT.getCurrentServerData();
 		#else
 		return MINECRAFT.getCurrentServer();
@@ -319,11 +325,8 @@ public class MinecraftClientWrapper extends AbstractMinecraftSharedWrapper imple
 			}
 		}
 		
-		#if MC_VER <= MC_1_7_10
+		#if MC_VER <= MC_1_12_2
 		return new DhChunkPos(player.chunkCoordX, player.chunkCoordZ);
-		#elif MC_VER <= MC_1_12_2
-		ChunkPos playerPos = new ChunkPos(player.getPosition());
-		return new DhChunkPos(playerPos.x, playerPos.z);
         #elif MC_VER < MC_1_17_1
         ChunkPos playerPos = new ChunkPos(player.blockPosition());
         return new DhChunkPos(playerPos.x, playerPos.z);
@@ -334,6 +337,50 @@ public class MinecraftClientWrapper extends AbstractMinecraftSharedWrapper imple
 		ChunkPos playerPos = player.chunkPosition();
 		return new DhChunkPos(playerPos.x(), playerPos.z());
         #endif
+	}
+	
+	@Override
+	public void getPlayerBlockPosMutable(DhBlockPosMutable playerBlockPos)
+	{
+		#if MC_VER <= MC_1_12_2
+		EntityPlayerSP player = this.getPlayer();
+		#else
+		LocalPlayer player = this.getPlayer();
+		#endif
+		if (player == null)
+		{
+			playerBlockPos.setX(0);
+			playerBlockPos.setY(0);
+			playerBlockPos.setZ(0);
+			return;
+		}
+		
+		if (DelayedAccessors.IMMERSIVE_PORTALS != null)
+		{
+			DhBlockPos pos = DelayedAccessors.IMMERSIVE_PORTALS.getActualPlayerBlockPos();
+			if (pos != null)
+			{
+				playerBlockPos.setX(pos.getX());
+				playerBlockPos.setY(pos.getY());
+				playerBlockPos.setZ(pos.getZ());
+				return;
+			}
+		}
+	
+		#if MC_VER <= MC_1_12_2
+		playerBlockPos.setX((int) Math.floor(player.posX));
+		playerBlockPos.setY((int) Math.floor(player.posY));
+		playerBlockPos.setZ((int) Math.floor(player.posZ));
+		#elif MC_VER < MC_1_17_1
+		BlockPos blockPos = player.blockPosition();
+		playerBlockPos.setX(blockPos.getX());
+		playerBlockPos.setY(blockPos.getY());
+		playerBlockPos.setZ(blockPos.getZ());
+		#else
+		playerBlockPos.setX(player.getBlockX());
+		playerBlockPos.setY(player.getBlockY());
+		playerBlockPos.setZ(player.getBlockZ());
+		#endif
 	}
 	
 	//endregion
@@ -611,7 +658,9 @@ public class MinecraftClientWrapper extends AbstractMinecraftSharedWrapper imple
 	@Override
 	public void executeOnRenderThread(Runnable runnable)
 	{
-		#if MC_VER <= MC_1_12_2
+		#if MC_VER <= MC_1_7_10
+		MINECRAFT.func_152344_a(runnable); // addScheduledTask
+		#elif MC_VER <= MC_1_12_2
 		MINECRAFT.addScheduledTask(runnable); 
 		#else
 		MINECRAFT.execute(runnable); 

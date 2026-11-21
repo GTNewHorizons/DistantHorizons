@@ -207,7 +207,18 @@ unimined.minecraft(sourceSets.main, true) {
         mappings {
             if (gradle.ext.minecraft_version == "1.7.10")
             {
-                mcp("stable", "12-1.7.10")
+                // GTNH (RetroFuturaGradle) names: fields and methods from Forge's bundled conf,
+                // which Forge and GTNH dev jars use, params from stable_12 since Forge ships none
+                mapping("net.minecraftforge:forge:1.7.10-${gradle.ext.forge_version}:userdev@jar", "forgeMCP") {
+                    subEntry { config, content, format -> config.skip = !(content.fileName() in ["fields.csv", "methods.csv"]) }
+                    requires("searge")
+                    provides("mcp", true)
+                }
+                mapping("de.oceanlabs.mcp:mcp_stable:12-1.7.10@zip", "mcpParams") {
+                    subEntry { config, content, format -> config.skip = content.fileName() != "params.csv" }
+                    requires("searge")
+                    provides("mcp", true)
+                }
                 devNamespace "mcp"
             }
             else if (gradle.ext.minecraft_version == "1.12.2")
@@ -522,6 +533,11 @@ if (isNotCommonProject) {
 
         // NightConfig
         relocate "com.electronwill.nightconfig", "${librariesLocation}.electronwill.nightconfig"
+
+        // 1.7.10 always runs on Java 8 so the Java 9+ variants of the bundled libraries are never used,
+        // FML's ASM can't read them and logs a "corrupt zip" error for each on every start
+        if (rootProject.minecraft_version == "1.7.10")
+            exclude "META-INF/versions/**"
 
         mergeServiceFiles()
     }

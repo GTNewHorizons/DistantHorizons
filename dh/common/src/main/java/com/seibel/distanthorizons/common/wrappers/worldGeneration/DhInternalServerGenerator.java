@@ -34,12 +34,14 @@ import net.minecraft.world.ChunkCoordIntPair;
 import net.minecraft.world.WorldServer;
 import net.minecraft.world.chunk.Chunk;
 import net.minecraft.world.gen.ChunkProviderServer;
+import net.minecraftforge.common.DimensionManager;
 import net.minecraftforge.common.ForgeChunkManager;
 #elif MC_VER <= MC_1_12_2
 import net.minecraft.util.math.ChunkPos;
 import net.minecraft.world.WorldServer;
 import net.minecraft.world.chunk.Chunk;
 import net.minecraft.world.gen.ChunkProviderServer;
+import net.minecraftforge.common.DimensionManager;
 import net.minecraftforge.common.ForgeChunkManager;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.world.chunk.storage.AnvilChunkLoader;
@@ -127,6 +129,13 @@ public class DhInternalServerGenerator
 	 * This map tracks how many in-flight generation events currently need each chunk pos loaded.
 	 */
 	private final ConcurrentHashMap<DhChunkPos, Integer> generationChunkRefCountMap = new ConcurrentHashMap<>();
+	
+	/**
+	 * Set once {@link #close()} was called. <br>
+	 * Requests of generation events that are still running can be queued behind the ticket release,
+	 * they must not force chunks with the released ticket.
+	 */
+	private volatile boolean closed = false;
 	#endif
 	
 	
@@ -144,6 +153,15 @@ public class DhInternalServerGenerator
 		#if MC_VER <= MC_1_12_2
 		this.dhServerGenTicket = ForgeChunkManager.requestTicket(FORGE_MAIN, params.mcServerLevel, ForgeChunkManager.Type.NORMAL);
 		increaseChunkLimit(this.dhServerGenTicket, 1000);
+		#endif
+
+		#if MC_VER <= MC_1_7_10
+		// DH only forces chunks to generate them, they shouldn't be simulated in the meantime
+		if (HODGE_PODGE_ACCESSOR != null
+			&& this.dhServerGenTicket != null)
+		{
+			HODGE_PODGE_ACCESSOR.excludeTicketFromSimulation(this.dhServerGenTicket);
+		}
 		#endif
 	}
 
@@ -221,17 +239,54 @@ public class DhInternalServerGenerator
 	// generation //
 	//============//
 	
+	#if MC_VER <= MC_1_12_2
+	/**
+	 * False once Forge has unloaded this world. <br>
+	 * Server thread tasks queued before that can still run afterward and must not touch it anymore,
+	 * Forge has already dropped its tickets and forced chunks.
+	 */
+	private boolean isLevelLoaded()
+	{
+		WorldServer level = this.params.mcServerLevel;
+		#if MC_VER <= MC_1_7_10
+		return DimensionManager.getWorld(level.provider.dimensionId) == level;
+		#else
+		return DimensionManager.getWorld(level.provider.getDimension()) == level;
+		#endif
+	}
+	#endif
+	
+	/** 
+	 * Releases the Forge ticket, 
+	 * otherwise every world gen restart (e.g. toggling the generator plan) leaves one behind 
+	 * until Forge's per mod ticket limit is reached.
+	 */
+	public void close()
+	{
+		#if MC_VER <= MC_1_12_2
+		this.closed = true;
+		ServerThreadTaskHandler.INSTANCE.queueEssentialTask(() ->
+		{
+			// Forge drops the tickets of unloaded worlds itself and would throw here
+			if (this.isLevelLoaded())
+			{
+				ForgeChunkManager.releaseTicket(this.dhServerGenTicket);
+			}
+			return null;
+		});
+		#endif
+	}
+	
 	public void generateChunksViaInternalServer(ChunkGenEvent genEvent)
 	{
 		this.runValidation();
 		
+		ArrayList<CompletableFuture<ChunkWrapper>> getChunkFutureList = new ArrayList<>();
 		try
 		{
 			//=====================//
 			// create gen requests //
 			//=====================//
-			
-			ArrayList<CompletableFuture<ChunkWrapper>> getChunkFutureList = new ArrayList<>();
 			
 			{
 				Iterator<ChunkPos> chunkPosIterator = ChunkPosGenStream.getIterator(genEvent.minChunkPos.getX(), genEvent.minChunkPos.getZ(), genEvent.widthInChunks, 0);
@@ -321,6 +376,20 @@ public class DhInternalServerGenerator
 		}
 		finally
 		{
+			#if MC_VER <= MC_1_12_2
+			// if a request failed we got here early while other requests may still be queued,
+			// releases run before requests on the server thread, so those would acquire their chunks
+			// after the release below and never give them back
+			for (int i = 0; i < getChunkFutureList.size(); i++)
+			{
+				try
+				{
+					getChunkFutureList.get(i).join();
+				}
+				catch (Exception ignore) { }
+			}
+			#endif
+			
 			ArrayList<CompletableFuture<Void>> releaseFutures = new ArrayList<>();
 
 			// release all chunks from the server to prevent out of memory issues.
@@ -347,12 +416,19 @@ public class DhInternalServerGenerator
 			{
 				try
 				{
+					if (!this.isLevelLoaded())
+					{
+						return null;
+					}
+					
 					ChunkProviderServer provider = (ChunkProviderServer) this.params.mcServerLevel.getChunkProvider();
 					// Each pump frees a limited number of chunks so several are generally needed,
 					// but we want to avoid an endless loop.
 					int remainingDrainAttemptCount = MAX_UNLOAD_DRAIN_ATTEMPT_COUNT;
 					#if MC_VER <= MC_1_7_10
-					while (!provider.droppedChunksSet.isEmpty() && remainingDrainAttemptCount-- > 0)
+					while (!provider.chunksToUnload.isEmpty()
+						&& !provider.loadedChunks.isEmpty()
+						&& remainingDrainAttemptCount-- > 0)
 					{
 						provider.unloadQueuedChunks();
 					}
@@ -462,6 +538,14 @@ public class DhInternalServerGenerator
 			
 			return ServerThreadTaskHandler.INSTANCE.queueTask(() ->
 			{
+				// releases are still processed after closing, so chunks acquired before that are freed normally
+				if (this.closed || !this.isLevelLoaded())
+				{
+					// nothing was acquired, so the release won't revert the ignore added above
+					this.scheduleRemovePosToIgnore(McObjectConverter.convert(chunkPos));
+					return null;
+				}
+				
 				ChunkProviderServer provider = (ChunkProviderServer) level.getChunkProvider();
 				
 				// load neighbors first so the target chunk can fully populate.
@@ -485,13 +569,6 @@ public class DhInternalServerGenerator
 							this.updateManager.addPosToIgnore(new DhChunkPos(neighborPosX, neighborPosZ));
 						}
 
-						#if MC_VER <= MC_1_7_10
-						if (HODGE_PODGE_ACCESSOR != null)
-						{
-							HODGE_PODGE_ACCESSOR.preventChunkSimulation(level, neighborPosX, neighborPosZ);
-						}
-						#endif
-						
 						#if MC_VER <= MC_1_7_10
 						ForgeChunkManager.forceChunk(this.dhServerGenTicket, new ChunkCoordIntPair(neighborPosX, neighborPosZ));
 						#else
@@ -589,6 +666,11 @@ public class DhInternalServerGenerator
 		{
 			try
 			{
+				if (!this.isLevelLoaded())
+				{
+					return null;
+				}
+				
 				ChunkProviderServer provider = (ChunkProviderServer) level.getChunkProvider();
 	
 				// release the target chunk and the neighbors acquired in requestChunkFromServerAsync.
@@ -615,19 +697,12 @@ public class DhInternalServerGenerator
 						ForgeChunkManager.unforceChunk(this.dhServerGenTicket, new ChunkPos(neighborPosX, neighborPosZ));
 						#endif
 						
-						#if MC_VER <= MC_1_7_10
-						if (HODGE_PODGE_ACCESSOR != null)
-						{
-							HODGE_PODGE_ACCESSOR.allowChunkSimulation(level, neighborPosX, neighborPosZ);
-						}
-						#endif
-						
 						// don't unload chunks a player is watching, MC still owns those.
 						// this mirrors the same guard vanilla uses in WorldServer.saveAllChunks().
 						#if MC_VER <= MC_1_7_10
 						if (!level.getPlayerManager().func_152621_a(neighborPosX, neighborPosZ))
 						{
-							provider.dropChunk(neighborPosX, neighborPosZ);
+							provider.unloadChunksIfNotNearSpawn(neighborPosX, neighborPosZ);
 						}
 						#else
 						Chunk chunk = provider.getLoadedChunk(neighborPosX, neighborPosZ);

@@ -23,6 +23,9 @@ dependencies {
         exclude module: "fabric-gametest-api-v1"
     }
 
+    // example local jar reference for troubleshooting other mods:
+    //dependencies { compileOnly(files('../tempLibJars/iris-fabric-1.12.0-snapshot+mc26.3-local.jar')) }
+
     // Mod Menu
     addMod("maven.modrinth:modmenu:${rootProject.modmenu_version}", rootProject.enable_mod_menu)
 
@@ -34,13 +37,19 @@ dependencies {
 
     // Sodium
     addMod("maven.modrinth:sodium:${rootProject.sodium_version}", rootProject.enable_sodium)
-    if (rootProject.enable_sodium == "2") implementation "org.joml:joml:1.10.2"
     
 	// Lithium
     addMod("maven.modrinth:lithium:${rootProject.lithium_version}", rootProject.enable_lithium)
     
     // Iris
-    addMod("maven.modrinth:iris:${rootProject.iris_version}", rootProject.enable_iris)
+    if (rootProject.mcVer != "26.3.0") // TODO remove once Iris has a stable release
+    {
+        addMod("maven.modrinth:iris:${rootProject.iris_version}", rootProject.enable_iris)
+    }
+    else
+    {
+        dependencies { compileOnly(files('../tempLibJars/iris-fabric-1.12.0-snapshot+mc26.3-local.jar')) }
+    }
     
     // BCLib
     addMod("com.github.quiqueck:BCLib:${rootProject.bclib_version}", rootProject.enable_bclib)

@@ -30,7 +30,6 @@ import com.seibel.distanthorizons.core.logging.DhLogger;
 import com.seibel.distanthorizons.core.logging.DhLoggerBuilder;
 import com.seibel.distanthorizons.core.wrapperInterfaces.misc.IPluginPacketSender;
 import net.minecraft.entity.player.EntityPlayerMP;
-import net.minecraft.server.MinecraftServer;
 import net.minecraft.world.World;
 import net.minecraft.world.WorldServer;
 import net.minecraftforge.common.MinecraftForge;
@@ -160,16 +159,6 @@ public class ForgeServerProxy implements AbstractModInitializer.IEventProxy
 		this.serverApi.serverPlayerDisconnectEvent(serverPlayerWrapper);
 	}
 	
-	@SubscribeEvent
-	public void playerChangedDimensionEvent(PlayerEvent.PlayerChangedDimensionEvent event)
-	{
-		this.serverApi.serverPlayerLevelChangeEvent(
-			getServerPlayerWrapper(event),
-			getServerLevelWrapper(event.fromDim, event),
-			getServerLevelWrapper(event.toDim, event)
-		);
-	}
-	
 	//endregion
 	
 	
@@ -180,17 +169,6 @@ public class ForgeServerProxy implements AbstractModInitializer.IEventProxy
 	//region
 	
 	private static ServerLevelWrapper getServerLevelWrapper(WorldServer level) { return ServerLevelWrapper.getWrapper(level); }
-	
-	private static ServerLevelWrapper getServerLevelWrapper(int dimensionId, PlayerEvent event)
-	{
-		MinecraftServer server = event.player.getServer();
-		if (server == null)
-		{
-			LOGGER.error("getServerLevelWrapper: server is null for player {}", event.player.getName());
-			return null;
-		}
-		return getServerLevelWrapper(server.getWorld(dimensionId));
-	}
 	
 	private static ServerPlayerWrapper getServerPlayerWrapper(PlayerEvent event)
 	{ return ServerPlayerWrapper.getWrapper((EntityPlayerMP) event.player); }

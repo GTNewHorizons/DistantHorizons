@@ -60,8 +60,6 @@ public class ForgeMain extends AbstractModInitializer implements IForgeMain
     public static Object instance;
 
     private static final boolean DISABLE_SERVER_FOR_TESTING = false;
-
-    public static boolean isHodgePodgeInstalled = false;
 	
 	private Consumer<MinecraftServer> eventHandlerStartServer;
 	
@@ -120,27 +118,17 @@ public class ForgeMain extends AbstractModInitializer implements IForgeMain
 			}
 			
 			// RPLE
+			// lightmap, client only
 			if (Loader.isModLoaded("rple"))
 			{
-				RpleAccessor rpleAccessor = new RpleAccessor();
-				this.addModCompatAccessor(IRpleAccessor.class, () -> rpleAccessor);
-				this.addModCompatAccessor(IRpleCommonAccessor.class, () -> rpleAccessor);
-			}
-			
-			// Hodge Podge
-			if (Loader.isModLoaded("hodgepodge")
-				&& event.getSide() == Side.SERVER)
-			{
-				HodgePodgeAccessor hodgePodgeAccessor = new HodgePodgeAccessor();
-				this.addModCompatAccessor(IHodgePodgeAccessor.class, () -> hodgePodgeAccessor);
-				this.addModCompatAccessor(IHodgePodgeCommonAccessor.class, () -> hodgePodgeAccessor);
+				this.addModCompatAccessor(IRpleAccessor.class, RpleClientAccessor::new);
 			}
         } 
 		else if (!DISABLE_SERVER_FOR_TESTING) 
 		{
             this.onInitializeServer();
         }
-		
+
         ForgeChunkManager.setForcedChunkLoadingCallback(
             instance,
             (List<ForgeChunkManager.Ticket> tickets, World world) -> releaseStaleTickets(tickets));
@@ -259,8 +247,26 @@ public class ForgeMain extends AbstractModInitializer implements IForgeMain
     protected IEventProxy createServerProxy(boolean isDedicated) { return new ForgeServerProxy(isDedicated); }
 	
     @Override
-    protected void initializeModCompat() 
-    { this.tryCreateModCompatAccessor("angelica", IIrisAccessor.class, IrisAccessor::new); }
+    protected void initializeModCompat()
+	{
+		this.tryCreateModCompatAccessor("angelica", IIrisAccessor.class, IrisAccessor::new);
+
+		// Hodge Podge
+		// used by the internal server world gen
+		if (Loader.isModLoaded("hodgepodge"))
+		{
+			HodgePodgeAccessor hodgePodgeAccessor = new HodgePodgeAccessor();
+			this.addModCompatAccessor(IHodgePodgeAccessor.class, () -> hodgePodgeAccessor);
+			this.addModCompatAccessor(IHodgePodgeCommonAccessor.class, () -> hodgePodgeAccessor);
+		}
+
+		// RPLE
+		// block colors are used by the internal server world gen
+		if (Loader.isModLoaded("rple"))
+		{
+			this.addModCompatAccessor(IRpleCommonAccessor.class, RpleCommonAccessor::new);
+		}
+	}
 	
     @Override
     protected void subscribeClientStartedEvent(Runnable eventHandler) { eventHandler.run(); }

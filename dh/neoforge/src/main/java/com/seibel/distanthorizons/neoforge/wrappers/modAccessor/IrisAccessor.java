@@ -62,6 +62,16 @@ public class IrisAccessor implements IIrisAccessor
 		return -1;
 	}
 	
+	@Override
+	public boolean supportsMultiBackend()
+	{
+		#if MC_VER <= MC_26_2_0
+		return false;
+		#else
+		return IrisApi.getInstance().supportsMultiBackend();
+		#endif
+	}
+	
 }
 
 #endif
