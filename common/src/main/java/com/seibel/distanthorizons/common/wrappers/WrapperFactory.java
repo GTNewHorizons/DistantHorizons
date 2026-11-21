@@ -171,7 +171,8 @@ public class WrapperFactory implements IWrapperFactory
 	
 	@Override
 	public void resetCachedIgnoredBlocksSets() { BlockStateWrapper.clearCachedIgnoreBlocks(); }
-	
+	@Override 
+	public void clearBiomeWrapperCache() { BiomeWrapper.clearCache(); }
 	
 	/**
 	 * Note: when this is updated for different MC versions, make sure you also update the documentation in

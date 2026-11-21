@@ -19,10 +19,11 @@
 
 package com.seibel.distanthorizons.common.render.openGl.terrain;
 
+import com.seibel.distanthorizons.api.interfaces.render.renderDef.IDhApiBlockTextureAtlas;
 import com.seibel.distanthorizons.common.wrappers.minecraft.MinecraftGLWrapper;
-import com.seibel.distanthorizons.core.dataObjects.render.textures.BlockTextureRegistry;
-import com.seibel.distanthorizons.core.render.AbstractBlockTextureAtlas;
+import com.seibel.distanthorizons.core.dataObjects.render.textures.BlockRenderRegistry;
 import com.seibel.distanthorizons.coreapi.util.TextureUtil;
+import com.seibel.distanthorizons.lwjgl.GL12;
 import org.lwjgl.opengl.GL11;
 import org.lwjgl.opengl.GL13;
 
@@ -31,15 +32,15 @@ import java.nio.ByteBuffer;
 import static com.seibel.distanthorizons.lwjgl.LWJGLServiceProvider.LWJGL;
 
 /**
- * The GPU side of the {@link BlockTextureRegistry},
+ * The GPU side of the {@link BlockRenderRegistry},
  * a texture array with one layer per block face tile. <br><br>
  *
- * Layer {@link BlockTextureRegistry#UNTEXTURED_ID} is a uniform 1.0 color multiplier
+ * Layer {@link BlockRenderRegistry#UNTEXTURED_ID} is a uniform 1.0 color multiplier
  * so vertices without a texture render exactly like flat-colored LODs.
  *
- * @see BlockTextureRegistry
+ * @see BlockRenderRegistry
  */
-public class GlBlockTextureAtlas extends AbstractBlockTextureAtlas
+public class GlBlockTextureAtlas implements IDhApiBlockTextureAtlas
 {
 	public static final GlBlockTextureAtlas INSTANCE = new GlBlockTextureAtlas();
 	
@@ -72,7 +73,7 @@ public class GlBlockTextureAtlas extends AbstractBlockTextureAtlas
 	//region
 	
 	@Override
-	protected void tryCreateOrResize(int width, int height)
+	public void tryCreateOrResize(int width, int height)
 	{
 		if (this.textureId != 0)
 		{
@@ -96,6 +97,10 @@ public class GlBlockTextureAtlas extends AbstractBlockTextureAtlas
 		LWJGL.glTexParameteri(GL11.GL_TEXTURE_2D, GL11.GL_TEXTURE_MAG_FILTER, GL11.GL_NEAREST);
 		LWJGL.glTexParameteri(GL11.GL_TEXTURE_2D, GL11.GL_TEXTURE_WRAP_S, GL11.GL_REPEAT);
 		LWJGL.glTexParameteri(GL11.GL_TEXTURE_2D, GL11.GL_TEXTURE_WRAP_T, GL11.GL_REPEAT);
+		
+		// mip limiting is necessary to prevent mipping outside a given block
+		int mipLevels = (int)Math.sqrt(TextureUtil.TEXTURE_WIDTH_AND_HEIGHT);
+		LWJGL.glTexParameteri(GL11.GL_TEXTURE_2D, GL12.GL_TEXTURE_MAX_LEVEL, mipLevels);
 	}
 	
 	public int getTextureId() { return this.textureId; }
@@ -134,7 +139,7 @@ public class GlBlockTextureAtlas extends AbstractBlockTextureAtlas
 	//region
 	
 	@Override
-	protected void beforeWriteToTexture()
+	public void beforeWriteToTexture()
 	{
 		this.uploadGlState.saveState();
 		
@@ -147,7 +152,7 @@ public class GlBlockTextureAtlas extends AbstractBlockTextureAtlas
 	}
 	
 	@Override
-	protected void writeToTexture(ByteBuffer pixelBuffer, int destinationX, int destinationY, int tileWidth, int tileHeight)
+	public void writeToTexture(ByteBuffer pixelBuffer, int destinationX, int destinationY, int tileWidth, int tileHeight)
 	{
 		LWJGL.glTexSubImage2D(
 			GL11.GL_TEXTURE_2D, 0,
@@ -158,10 +163,10 @@ public class GlBlockTextureAtlas extends AbstractBlockTextureAtlas
 	}
 	
 	@Override
-	protected void afterWriteToTexture()
+	public void afterWriteToTexture()
 	{
 		LWJGL.glGenerateMipmap(GL11.GL_TEXTURE_2D);
-		uploadGlState.close();
+		this.uploadGlState.close();
 	}
 	
 	//endregion

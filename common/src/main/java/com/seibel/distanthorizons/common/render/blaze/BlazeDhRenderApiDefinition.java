@@ -8,12 +8,14 @@ public class BlazeDhRenderApiDefinition {}
 import com.seibel.distanthorizons.api.enums.config.EDhApiDepthDirection;
 import com.seibel.distanthorizons.api.enums.config.EDhApiDepthRange;
 import com.seibel.distanthorizons.api.enums.config.EDhApiRenderingApi;
+import com.seibel.distanthorizons.api.enums.rendering.EDhApiTerrainVertexFormat;
 import com.seibel.distanthorizons.api.interfaces.render.renderDef.*;
 import com.seibel.distanthorizons.api.interfaces.render.renderDef.objects.IDhApiVertexBufferWrapper;
 import com.seibel.distanthorizons.common.render.blaze.objects.BlazeGenericObjectVertexContainer;
 import com.seibel.distanthorizons.common.render.blaze.postProcessing.*;
 import com.seibel.distanthorizons.common.render.blaze.test.BlazeDhTestTriangleRenderer;
 import com.seibel.distanthorizons.common.render.blaze.wrappers.buffer.BlazeVertexBufferWrapper;
+import com.seibel.distanthorizons.common.render.blaze.wrappers.texture.BlazeBlockTextureAtlas;
 import com.seibel.distanthorizons.common.render.blaze.wrappers.uniform.BlazeLodUniformBufferWrapper;
 import com.seibel.distanthorizons.common.wrappers.minecraft.MinecraftRenderWrapper;
 import com.seibel.distanthorizons.api.interfaces.render.renderDef.AbstractDhApiRenderDefinition;
@@ -55,6 +57,9 @@ public class BlazeDhRenderApiDefinition extends AbstractDhApiRenderDefinition
 	private final EDhApiRenderingApi renderApi;
 	public EDhApiRenderingApi getRenderApi() { return this.renderApi; }
 	public boolean isNativeRenderer() { return false; }
+	
+	@Override
+	public EDhApiTerrainVertexFormat getTerrainVertexFormat() { return EDhApiTerrainVertexFormat.POS_META_COLOR_MATERIAL_NORMAL_TEXTURE_OFFSET; }
 	
 	@Override
 	public int getPriority() { return IOverrideInjector.CORE_PRIORITY; }
@@ -99,6 +104,7 @@ public class BlazeDhRenderApiDefinition extends AbstractDhApiRenderDefinition
 	@Override public IDhApiVanillaFadeRenderer getVanillaFadeRenderer() { return BlazeVanillaFadeRenderer.INSTANCE; }
 	@Override public IDhApiTestTriangleRenderer getTestTriangleRenderer() { return BlazeDhTestTriangleRenderer.INSTANCE; }
 	@Override public IDhApiGenericRenderer getGenericRenderer() { return BlazeDhGenericObjectRenderer.INSTANCE; }
+	@Override public IDhApiBlockTextureAtlas getTextureAtlasWrapper() { return BlazeBlockTextureAtlas.INSTANCE; }
 	
 	//endregion
 	

@@ -36,10 +36,8 @@ import com.seibel.distanthorizons.core.network.messages.AbstractNetworkMessage;
 #endif
 
 #if MC_VER <= MC_1_21_11
-import net.fabricmc.fabric.api.entity.event.v1.ServerEntityWorldChangeEvents;
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerWorldEvents;
 #else
-import net.fabricmc.fabric.api.entity.event.v1.ServerEntityLevelChangeEvents;
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerLevelEvents;
 #endif
 
@@ -162,19 +160,6 @@ public class FabricServerProxy implements AbstractModInitializer.IEventProxy
 		ServerPlayConnectionEvents.DISCONNECT.register((handler, server) ->
 		{
 			ServerApi.INSTANCE.serverPlayerDisconnectEvent(this.getServerPlayerWrapper(handler.player));
-		});
-		
-		#if MC_VER <= MC_1_21_11
-		ServerEntityWorldChangeEvents.AFTER_PLAYER_CHANGE_WORLD.register((player, originLevel, destinationLevel) ->
-		#else
-		ServerEntityLevelChangeEvents.AFTER_PLAYER_CHANGE_LEVEL.register((player, originLevel, destinationLevel) ->
-		#endif
-		{
-			ServerApi.INSTANCE.serverPlayerLevelChangeEvent(
-				this.getServerPlayerWrapper(player),
-				this.getServerLevelWrapper(originLevel),
-				this.getServerLevelWrapper(destinationLevel)
-			);
 		});
 		
 		#if MC_VER < MC_1_20_6

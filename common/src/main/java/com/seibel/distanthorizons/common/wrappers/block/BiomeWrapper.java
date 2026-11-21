@@ -93,6 +93,9 @@ public class BiomeWrapper implements IBiomeWrapper
 	
 	public static final ConcurrentHashMap<String, BiomeWrapper> WRAPPER_BY_RESOURCE_LOCATION = new ConcurrentHashMap<>();
 	
+	/** keep track of broken biomes so we don't log every time */
+	private static final HashSet<String> BROKEN_RESOURCE_LOCATION_STRINGS = new HashSet<>();
+	
 	public static final String EMPTY_BIOME_STRING = "EMPTY";
 	public static final BiomeWrapper EMPTY_WRAPPER = new BiomeWrapper(null, null);
 	
@@ -101,9 +104,6 @@ public class BiomeWrapper implements IBiomeWrapper
 		#else "minecraft:plains" #endif;
 	
 	
-	
-	/** keep track of broken biomes so we don't log every time */
-	private static final HashSet<String> brokenResourceLocationStrings = new HashSet<>();
 	
 	/** 
 	 * Only display this warning once, otherwise the log may be spammed <br> 
@@ -195,7 +195,7 @@ public class BiomeWrapper implements IBiomeWrapper
 		}
 		
         #if MC_VER <= MC_1_7_10
-		return this.biome.biomeName;
+		return getSerialName(this.biome);
         #elif MC_VER < MC_1_18_2
 		return this.biome.toString();
         #else
@@ -223,6 +223,12 @@ public class BiomeWrapper implements IBiomeWrapper
 	
 	@Override
 	public Object getWrappedMcObject() { return this.biome; }
+	
+	public static void clearCache() 
+	{
+		WRAPPER_BY_BIOME.clear();
+		WRAPPER_BY_RESOURCE_LOCATION.clear();
+	}
 	
 	//endregion
 	
@@ -264,7 +270,7 @@ public class BiomeWrapper implements IBiomeWrapper
 		#endif
 		
 		#if MC_VER <= MC_1_7_10
-		this.serialString = "biome:" + this.biome.biomeName;
+		this.serialString = "biome:" + getSerialName(this.biome);
 		#else
 		#if MC_VER <= MC_1_21_10
 		ResourceLocation resourceLocation;
@@ -307,6 +313,15 @@ public class BiomeWrapper implements IBiomeWrapper
 		return this.serialString;
 	}
 	
+	#if MC_VER <= MC_1_7_10
+	/**
+	 * Some mods never call setBiomeName (e.g. Arcana RPG's BiomeSunset),
+	 * so nameless biomes are keyed by their ID instead.
+	 */
+	public static String getSerialName(BiomeGenBase biome)
+	{ return (biome.biomeName != null) ? biome.biomeName : ("#" + biome.biomeID); }
+	
+	#endif
 	public static IBiomeWrapper deserialize(String resourceLocationString, ILevelWrapper levelWrapper) throws IOException
 	{
 		// we need the final string for the concurrent hash map later
@@ -354,9 +369,9 @@ public class BiomeWrapper implements IBiomeWrapper
 				
 				if (!deserializeResult.success)
 				{
-					if (!brokenResourceLocationStrings.contains(resourceLocationString))
+					if (!BROKEN_RESOURCE_LOCATION_STRINGS.contains(resourceLocationString))
 					{
-						brokenResourceLocationStrings.add(resourceLocationString);
+						BROKEN_RESOURCE_LOCATION_STRINGS.add(resourceLocationString);
 						LOGGER.warn("Unable to deserialize biome from string: [" + resourceLocationString + "]");
 					}
 					return EMPTY_WRAPPER;

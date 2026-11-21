@@ -135,7 +135,6 @@ public class GlDhMetaRenderer implements IDhApiMetaRenderer
 		
 		if (Config.Client.Advanced.Graphics.Texture.enableTexturedLods.get())
 		{
-			GlBlockTextureAtlas.INSTANCE.uploadPendingTiles();
 			GlBlockTextureAtlas.INSTANCE.bind();
 			DhApiRenderProxy.getDhBlockRatioAtlasTextureGlId = GlBlockTextureAtlas.INSTANCE.getTextureId();
 		}

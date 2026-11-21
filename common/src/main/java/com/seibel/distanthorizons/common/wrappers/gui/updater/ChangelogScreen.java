@@ -327,9 +327,7 @@ public class ChangelogScreen extends DhScreen
 			this.centerListVertically = false;
 			#endif
 			
-			#if MC_VER <= MC_1_7_10
-			this.textRenderer = minecraftClient.fontRendererObj;
-			#elif MC_VER <= MC_1_12_2
+			#if MC_VER <= MC_1_12_2
 			this.textRenderer = minecraftClient.fontRenderer;
 			#else
 			this.textRenderer = minecraftClient.font;
@@ -383,9 +381,7 @@ public class ChangelogScreen extends DhScreen
 	public static class ButtonEntry extends ContainerObjectSelectionList.Entry<ButtonEntry>
 	#endif
 	{
-		#if MC_VER <= MC_1_7_10
-		private static final FontRenderer textRenderer = Minecraft.getMinecraft().fontRendererObj;
-		#elif MC_VER <= MC_1_12_2
+		#if MC_VER <= MC_1_12_2
 		private static final FontRenderer textRenderer = Minecraft.getMinecraft().fontRenderer;
 		#else
 		private static final Font textRenderer = Minecraft.getInstance().font;

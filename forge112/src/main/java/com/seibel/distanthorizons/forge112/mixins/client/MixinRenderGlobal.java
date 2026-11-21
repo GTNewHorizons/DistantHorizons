@@ -63,10 +63,7 @@ public class MixinRenderGlobal
 	private int renderChunkLayerHead(BlockRenderLayer blockLayerIn, double partialTicks, int pass, Entity entityIn, Operation<Integer> original)
 	{
 		// Cancelling CUTOUT RenderLayer will cause crash
-		if (Config.Client.Advanced.Debugging.lodOnlyMode.get() && blockLayerIn != BlockRenderLayer.CUTOUT)
-		{
-			return 0;
-		}
+		boolean skipVanilla = Config.Client.Advanced.Debugging.lodOnlyMode.get() && blockLayerIn != BlockRenderLayer.CUTOUT;
 		
 		if (blockLayerIn == BlockRenderLayer.SOLID)
 		{
@@ -87,7 +84,7 @@ public class MixinRenderGlobal
 			GlStateManager.depthMask(true); // Water will be rendered black otherwise
 		}
 		
-		int originalResult = original.call(blockLayerIn, partialTicks, pass, entityIn);
+		int originalResult = skipVanilla ? 0 : original.call(blockLayerIn, partialTicks, pass, entityIn);
 		
 		if (blockLayerIn == BlockRenderLayer.SOLID)
 		{

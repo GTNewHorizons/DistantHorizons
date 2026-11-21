@@ -473,7 +473,9 @@ public abstract class AbstractModInitializer
 		//region
 		
 		IIrisAccessor iris = ModAccessorInjector.INSTANCE.get(IIrisAccessor.class);
-		if (iris != null)
+		if (iris != null
+			// only check if Iris only supports OpenGL
+			&& !iris.supportsMultiBackend())
 		{
 			// get the currently selected rendering API
 			EDhApiRenderingEngine renderEngine = Config.Client.Advanced.Graphics.Experimental.renderingEngine.get();

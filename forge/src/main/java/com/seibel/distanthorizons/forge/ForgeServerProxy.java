@@ -10,10 +10,8 @@ import com.seibel.distanthorizons.core.dependencyInjection.SingletonInjector;
 import com.seibel.distanthorizons.core.wrapperInterfaces.chunk.IChunkWrapper;
 import com.seibel.distanthorizons.core.wrapperInterfaces.misc.IPluginPacketSender;
 import com.seibel.distanthorizons.core.wrapperInterfaces.world.ILevelWrapper;
-import net.minecraft.resources.ResourceKey;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
-import net.minecraft.world.level.Level;
 import net.minecraft.world.level.LevelAccessor;
 import net.minecraftforge.common.MinecraftForge;
 import net.minecraftforge.event.TickEvent;
@@ -146,15 +144,6 @@ public class ForgeServerProxy implements AbstractModInitializer.IEventProxy
 	@SubscribeEvent
 	public void playerLoggedOutEvent(PlayerEvent.PlayerLoggedOutEvent event)
 	{ this.serverApi.serverPlayerDisconnectEvent(getServerPlayerWrapper(event)); }
-	@SubscribeEvent
-	public void playerChangedDimensionEvent(PlayerEvent.PlayerChangedDimensionEvent event)
-	{
-		this.serverApi.serverPlayerLevelChangeEvent(
-				getServerPlayerWrapper(event),
-				getServerLevelWrapper(event.getFrom(), event),
-				getServerLevelWrapper(event.getTo(), event)
-		);
-	}
 	
 	
 	
@@ -163,13 +152,6 @@ public class ForgeServerProxy implements AbstractModInitializer.IEventProxy
 	//================//
 	
 	private static ServerLevelWrapper getServerLevelWrapper(ServerLevel level) { return ServerLevelWrapper.getWrapper(level); }
-	
-	
-	private static ServerLevelWrapper getServerLevelWrapper(ResourceKey<Level> resourceKey, PlayerEvent event)
-	{
-		//noinspection DataFlowIssue (possible NPE after getServer())
-		return getServerLevelWrapper(event.getEntity().getServer().getLevel(resourceKey));
-	}
 	
 	private static ServerPlayerWrapper getServerPlayerWrapper(PlayerEvent event) {
 		return ServerPlayerWrapper.getWrapper(

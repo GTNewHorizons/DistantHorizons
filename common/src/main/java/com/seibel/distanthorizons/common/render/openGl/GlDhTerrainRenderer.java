@@ -1,5 +1,6 @@
 package com.seibel.distanthorizons.common.render.openGl;
 
+import com.seibel.distanthorizons.api.enums.rendering.EDhApiTerrainRenderPass;
 import com.seibel.distanthorizons.api.interfaces.render.renderDef.objects.IDhApiTerrainBufferContainer;
 import com.seibel.distanthorizons.api.methods.events.sharedParameterObjects.DhApiRenderParam;
 import com.seibel.distanthorizons.api.objects.util.IDhApiReadOnlyList;
@@ -55,7 +56,7 @@ public class GlDhTerrainRenderer implements IDhApiTerrainRenderer
 	
 	@Override 
 	public void render(
-		DhApiRenderParam apiRenderEventParam, boolean opaquePass,
+		DhApiRenderParam apiRenderEventParam, EDhApiTerrainRenderPass renderPass,
 		IDhApiReadOnlyList<? extends IDhApiTerrainBufferContainer> bufferContainers)
 	{
 		RenderParam renderEventParam = (RenderParam) apiRenderEventParam;
@@ -63,7 +64,7 @@ public class GlDhTerrainRenderer implements IDhApiTerrainRenderer
 		this.getTerrainShaderProgram();
 		
 		this.terrainShaderProgram.tryInit();
-		this.terrainShaderProgram.render(renderEventParam, opaquePass, bufferContainers);
+		this.terrainShaderProgram.render(renderEventParam, renderPass, bufferContainers);
 	}
 	
 	//endregion

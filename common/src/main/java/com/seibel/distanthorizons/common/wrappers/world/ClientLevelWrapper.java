@@ -56,7 +56,6 @@ import org.jetbrains.annotations.Nullable;
 
 import java.awt.*;
 import java.io.File;
-import java.io.IOException;
 import java.lang.ref.WeakReference;
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
@@ -72,7 +71,6 @@ import net.minecraft.world.level.chunk.ChunkStatus;
 #elif MC_VER < MC_1_21_3
 import net.minecraft.world.phys.Vec3;
 #else
-import com.seibel.distanthorizons.coreapi.util.ColorUtil;
 #endif
 
 #if MC_VER <= MC_1_21_10
@@ -390,6 +388,12 @@ public class ClientLevelWrapper implements IClientLevelWrapper
 	public int getBlockColor(
 		DhBlockPos blockWorldPos, IBiomeWrapper biome, FullDataSourceV2 fullDataSource, IBlockStateWrapper blockWrapper, 
 		boolean allowApiOverride)
+	{ return this.getBlockColorCache(blockWrapper).getColor((BiomeWrapper) biome, fullDataSource, blockWorldPos, allowApiOverride); }
+	
+	@Override
+	public boolean getBlockNeedsPostTinting(IBlockStateWrapper blockWrapper) { return this.getBlockColorCache(blockWrapper).getNeedPostTinting(); }
+	
+	private ClientBlockStateColorCache getBlockColorCache(IBlockStateWrapper blockWrapper)
 	{
 		ClientBlockStateColorCache blockColorCache = this.blockColorCacheByBlockState.get(((BlockStateWrapper) blockWrapper).blockState);
 		if (blockColorCache == null)
@@ -398,8 +402,7 @@ public class ClientLevelWrapper implements IClientLevelWrapper
 					((BlockStateWrapper) blockWrapper).blockState,
 					this.createCachedBlockColorCacheFunc);
 		}
-		
-		return blockColorCache.getColor((BiomeWrapper) biome, fullDataSource, blockWorldPos, allowApiOverride);
+		return blockColorCache;
 	}
 	
 	@Override

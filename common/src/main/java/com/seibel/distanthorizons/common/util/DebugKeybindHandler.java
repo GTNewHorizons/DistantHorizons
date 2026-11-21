@@ -27,11 +27,15 @@ import com.seibel.distanthorizons.core.dependencyInjection.SingletonInjector;
 import com.seibel.distanthorizons.core.wrapperInterfaces.minecraft.IMinecraftClientWrapper;
 import net.minecraft.client.Minecraft;
 
-#if MC_VER > MC_1_12_2
+#if MC_VER <= MC_1_12_2
+import org.lwjgl.input.Keyboard;
+#else
 import com.mojang.blaze3d.platform.InputConstants;
-#if MC_VER <= MC_26_2_0
-import org.lwjgl.glfw.GLFW;
 #endif
+
+#if MC_VER <= MC_1_12_2
+#elif MC_VER <= MC_26_2_0
+import org.lwjgl.glfw.GLFW;
 #endif
 
 /** 
@@ -43,10 +47,9 @@ public class DebugKeybindHandler
 	private static final IMinecraftClientWrapper MC_CLIENT = SingletonInjector.INSTANCE.get(IMinecraftClientWrapper.class);
 	
 	#if MC_VER <= MC_1_12_2
-	// TODO: Verify and implement for 1.12.2 and older
-	private static final int KEY_F6 = -1;
-	private static final int KEY_F7 = -1;
-	private static final int KEY_F8 = -1;
+	private static final int KEY_F6 = Keyboard.KEY_F6;
+	private static final int KEY_F7 = Keyboard.KEY_F7;
+	private static final int KEY_F8 = Keyboard.KEY_F8;
 	#elif MC_VER <= MC_26_2_0
 	private static final int KEY_F6 = GLFW.GLFW_KEY_F6;
 	private static final int KEY_F7 = GLFW.GLFW_KEY_F7;
@@ -127,10 +130,8 @@ public class DebugKeybindHandler
 	private static boolean isScreenOpen()
 	{
 		#if MC_VER <= MC_1_12_2
-		// TODO: Verify and implement for 1.12.2 and older
-		//return Minecraft.getMinecraft().currentScreen != null;
 		return true;
-		#elif MC_VER <= MC_26_2_0
+		#elif MC_VER <= MC_26_1_2
 		return Minecraft.getInstance().screen != null;
 		#else
 		return Minecraft.getInstance().gui.screen() != null;
@@ -139,8 +140,6 @@ public class DebugKeybindHandler
 	private static boolean isKeyDown(int keyCode)
 	{
 		#if MC_VER <= MC_1_12_2
-		// TODO: Verify and implement for 1.12.2 and older
-		//return Keyboard.isKeyDown(keyCode);
 		return false;
 		#elif MC_VER <= MC_26_2_0
 		return InputConstants.isKeyDown(MinecraftClientWrapper.INSTANCE.getGlfwWindowId(), keyCode);

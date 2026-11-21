@@ -41,8 +41,11 @@ public final class ThreadWorldGenParams
 	public StructureCheck structCheck;
 	#endif
 	
-	// used for some older MC versions
-	private static GlobalWorldGenParams previousGlobalWorldGenParams = null;
+	/**
+	 * used for some older MC versions,
+	 * not static so it doesn't keep the last generated level in memory after it's been closed
+	 */
+	private final GlobalWorldGenParams globalParams;
 	
 	
 	
@@ -66,7 +69,7 @@ public final class ThreadWorldGenParams
 	
 	private ThreadWorldGenParams(GlobalWorldGenParams param)
 	{
-		previousGlobalWorldGenParams = param;
+		this.globalParams = param;
 		
 		this.level = param.mcServerLevel;
 		
@@ -102,10 +105,7 @@ public final class ThreadWorldGenParams
 	#elif MC_VER < MC_1_19_2
 	public void recreateStructureCheck()
 	{
-		if (previousGlobalWorldGenParams != null)
-		{
-			this.structCheck = this.createStructureCheck(previousGlobalWorldGenParams);
-		}
+		this.structCheck = this.createStructureCheck(this.globalParams);
 	}
 	private StructureCheck createStructureCheck(GlobalWorldGenParams param)
 	{

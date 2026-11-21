@@ -72,8 +72,13 @@ public class MixinNetHandlerPlayClient
 		}
 		
 		Chunk chunk = this.world.getChunk(packetIn.getChunkX(), packetIn.getChunkZ());
-		
 		ILevelWrapper wrappedLevel = ProxyUtil.getLevelWrapper(this.world);
+		
+		if (SharedApi.isChunkAtChunkPosAlreadyUpdating(wrappedLevel, packetIn.getChunkX(), packetIn.getChunkZ()))
+		{
+			return;
+		}
+		
 		SharedApi.INSTANCE.applyChunkUpdate(
 			new ChunkWrapper(chunk, wrappedLevel),
 			wrappedLevel,

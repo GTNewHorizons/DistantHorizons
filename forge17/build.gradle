@@ -20,11 +20,8 @@ repositories {
 // ==================== Mod Dependency Helper ====================
 
 def addMod(path, enabled) {
-    // GTNH dev jars use different MCP names from this project's stable mappings.
-    // Select the SRG release artifact explicitly for Unimined to remap at runtime;
-    // GTNH's default Gradle metadata otherwise selects the dev artifact.
     if (enabled == "2")
-        dependencies { modImplementation("${path}@jar") { transitive = false } }
+        dependencies { modImplementation("${path}:dev") { transitive = false } }
     else if (enabled == "1")
         dependencies { modCompileOnly("${path}:dev") { transitive = false } }
 }
@@ -33,13 +30,13 @@ def addMod(path, enabled) {
 // ==================== Dependencies ====================
 
 dependencies {
-    modCompileOnly "com.github.GTNewHorizons:Hodgepodge:2.7.13:dev"
-    addMod("com.github.GTNewHorizons:GTNHLib:0.11.47", rootProject.enable_angelica == "2" ? "2" : "1")
+    addMod("com.github.GTNewHorizons:GTNHLib:0.11.54", (rootProject.enable_angelica == "2" || rootProject.enable_hodgepodge == "2") ? "2" : "1")
+    addMod("com.github.GTNewHorizons:Hodgepodge:2.7.221", rootProject.enable_hodgepodge)
     modCompileOnly("com.github.GTNewHorizons:GT5-Unofficial:5.09.51.469:dev") { transitive = false }
     addMod("com.github.GTNewHorizons:Angelica:2.2.12", rootProject.enable_angelica)
     modCompileOnly "com.falsepattern:rple-mc1.7.10:2.1.0:api"
     
-    modImplementation "io.github.legacymoddingmc:unimixins:0.2.1@jar"
+    modImplementation "io.github.legacymoddingmc:unimixins:0.3.1@jar"
 
 }
 

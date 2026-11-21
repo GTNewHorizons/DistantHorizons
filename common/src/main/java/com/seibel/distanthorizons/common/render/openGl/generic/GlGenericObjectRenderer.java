@@ -82,6 +82,9 @@ public class GlGenericObjectRenderer implements IDhApiGenericRenderer
 	
 	private IDhApiGenericObjectShaderProgram instancedShaderProgram;
 	private IDhApiGenericObjectShaderProgram directShaderProgram;
+	/** the shader program being used for this frame */
+	private IDhApiGenericObjectShaderProgram currentShaderProgram;
+	
 	private GLVertexBuffer boxVertexBuffer;
 	private GLIndexBuffer boxIndexBuffer;
 	
@@ -166,7 +169,47 @@ public class GlGenericObjectRenderer implements IDhApiGenericRenderer
 	
 	private GlGenericObjectRenderer() { }
 	
-	public void init()
+	@Override
+	public void preRender(DhApiRenderParam apiRenderEventParam)
+	{
+		this.init();
+		
+		
+		RenderParam renderEventParam = (RenderParam)apiRenderEventParam;
+		IProfilerWrapper profiler = renderEventParam.profiler;
+		try (IProfilerWrapper.IProfileBlock setup_profile = profiler.push("setup"))
+		{
+			boolean renderWireframe = Config.Client.Advanced.Debugging.renderWireframe.get();
+			if (renderWireframe)
+			{
+				LWJGL.glPolygonMode(GL11.GL_FRONT_AND_BACK, GL11.GL_LINE);
+				GLMC.disableFaceCulling();
+			}
+			else
+			{
+				LWJGL.glPolygonMode(GL11.GL_FRONT_AND_BACK, GL11.GL_FILL);
+				GLMC.enableFaceCulling();
+			}
+			
+			GLMC.enableBlend();
+			LWJGL.glBlendEquation(GL14.GL_FUNC_ADD);
+			GLMC.glBlendFuncSeparate(GL11.GL_SRC_ALPHA, GL11.GL_ONE_MINUS_SRC_ALPHA, GL11.GL_ONE, GL11.GL_ONE_MINUS_SRC_ALPHA);
+			
+			IDhApiGenericObjectShaderProgram shaderProgram = this.instancedRenderingAvailable ? this.instancedShaderProgram : this.directShaderProgram;
+			IDhApiGenericObjectShaderProgram shaderProgramOverride = OverrideInjector.INSTANCE.get(IDhApiGenericObjectShaderProgram.class);
+			if (shaderProgramOverride != null && shaderProgram.overrideThisFrame())
+			{
+				shaderProgram = shaderProgramOverride;
+			}
+			
+			shaderProgram.bind(renderEventParam);
+			shaderProgram.bindVertexBuffer(this.boxVertexBuffer.getId());
+			this.currentShaderProgram = shaderProgram;
+			
+			this.boxIndexBuffer.bind();
+		}
+	}
+	private void init()
 	{
 		if (this.init)
 		{
@@ -241,15 +284,8 @@ public class GlGenericObjectRenderer implements IDhApiGenericRenderer
 	//===========//
 	//region
 	
-	/**
-	 * @param renderingWithSsao 
-	 *      if true that means this render call is happening before the SSAO pass
-     *      and any objects rendered in this pass will have SSAO applied to them.
-	 */
-	@Override
-	public void render(
-		DhApiRenderParam apiRenderEventParam,
-		IDhApiCustomRenderRegister renderRegister, boolean renderingWithSsao)
+	@Override 
+	public void render(DhApiRenderParam apiRenderEventParam, IDhApiRenderableBoxGroup apiBoxGroup)
 	{
 		RenderParam renderEventParam = (RenderParam)apiRenderEventParam;
 		IProfilerWrapper profiler = renderEventParam.profiler;
@@ -262,143 +298,52 @@ public class GlGenericObjectRenderer implements IDhApiGenericRenderer
 		
 		
 		
-		// render setup //
-		try (IProfilerWrapper.IProfileBlock setup_profile = profiler.push("setup"))
+		// render //
+		
+		profiler.popPush("rendering");
+		try (IProfilerWrapper.IProfileBlock namespace_profile = profiler.push(apiBoxGroup.getResourceLocationNamespace());
+			IProfilerWrapper.IProfileBlock location_profile = profiler.push(apiBoxGroup.getResourceLocationPath()))
 		{
-			
-			this.init();
-			
-			ApiEventInjector.INSTANCE.fireAllEvents(DhApiBeforeGenericRenderSetupEvent.class, renderEventParam.apiCopy);
-			
-			
-			boolean renderWireframe = Config.Client.Advanced.Debugging.renderWireframe.get();
-			if (renderWireframe)
+			if (this.instancedRenderingAvailable)
 			{
-				LWJGL.glPolygonMode(GL11.GL_FRONT_AND_BACK, GL11.GL_LINE);
-				GLMC.disableFaceCulling();
+				this.renderBoxGroupInstanced(this.currentShaderProgram, renderEventParam, apiBoxGroup, renderEventParam.exactCameraPosition, profiler);
 			}
 			else
 			{
-				LWJGL.glPolygonMode(GL11.GL_FRONT_AND_BACK, GL11.GL_FILL);
-				GLMC.enableFaceCulling();
+				this.renderBoxGroupDirect(this.currentShaderProgram, renderEventParam, apiBoxGroup, renderEventParam.exactCameraPosition, profiler);
 			}
-			
-			GLMC.enableBlend();
-			LWJGL.glBlendEquation(GL14.GL_FUNC_ADD);
-			GLMC.glBlendFuncSeparate(GL11.GL_SRC_ALPHA, GL11.GL_ONE_MINUS_SRC_ALPHA, GL11.GL_ONE, GL11.GL_ONE_MINUS_SRC_ALPHA);
-			
-			IDhApiGenericObjectShaderProgram shaderProgram = this.instancedRenderingAvailable ? this.instancedShaderProgram : this.directShaderProgram;
-			IDhApiGenericObjectShaderProgram shaderProgramOverride = OverrideInjector.INSTANCE.get(IDhApiGenericObjectShaderProgram.class);
-			if (shaderProgramOverride != null && shaderProgram.overrideThisFrame())
-			{
-				shaderProgram = shaderProgramOverride;
-			}
-			
-			shaderProgram.bind(renderEventParam);
-			shaderProgram.bindVertexBuffer(this.boxVertexBuffer.getId());
-			
-			this.boxIndexBuffer.bind();
-			
-			
-			
-			// rendering //
-			
-			Collection<? extends IDhApiRenderableBoxGroup> boxList = renderRegister.getRenderBoxList();
-			for (IDhApiRenderableBoxGroup apiBoxGroup : boxList)
-			{
-				RenderableBoxGroup boxGroup = (RenderableBoxGroup)apiBoxGroup;
-				
-				// validation //
-				
-				// shouldn't happen, but just in case
-				if (boxGroup == null)
-				{
-					continue;
-				}
-				
-				// skip boxes that shouldn't render this pass
-				if (boxGroup.ssaoEnabled != renderingWithSsao)
-				{
-					continue;
-				}
-				
-				profiler.popPush("render prep");
-				boxGroup.preRender(renderEventParam); // called even if the group is inactive, so the group can be activate if desired
-				
-				// ignore inactive groups
-				if (!boxGroup.active)
-				{
-					continue;
-				}
-				
-				// allow API users to cancel this object's rendering
-				EVENT_PARAM.update(renderEventParam, boxGroup);
-				boolean cancelRendering = ApiEventInjector.INSTANCE.fireAllEvents(DhApiBeforeGenericObjectRenderEvent.class, EVENT_PARAM);
-				if (cancelRendering)
-				{
-					continue;
-				}
-				
-				// update instanced data if needed
-				if (this.instancedRenderingAvailable)
-				{
-					boxGroup.tryUpdateInstancedDataAsync(apiRenderEventParam);
-					
-					// skip groups that haven't been uploaded yet
-					if (boxGroup.vertexBufferContainer.getState() != GlGenericObjectVertexContainer.EState.RENDER)
-					{
-						continue;
-					}
-				}
-				
-				
-				
-				// render //
-				
-				profiler.popPush("rendering");
-				try (IProfilerWrapper.IProfileBlock namespace_profile = profiler.push(boxGroup.getResourceLocationNamespace());
-					IProfilerWrapper.IProfileBlock location_profile = profiler.push(boxGroup.getResourceLocationPath()))
-				{
-					if (this.instancedRenderingAvailable)
-					{
-						this.renderBoxGroupInstanced(shaderProgram, renderEventParam, boxGroup, renderEventParam.exactCameraPosition, profiler);
-					}
-					else
-					{
-						this.renderBoxGroupDirect(shaderProgram, renderEventParam, boxGroup, renderEventParam.exactCameraPosition, profiler);
-					}
-				}
-				
-				boxGroup.postRender(renderEventParam);
-			}
-			
-			
-			
-			//==========//
-			// clean up //
-			//==========//
-			
-			profiler.popPush("cleanup");
-			
-			ApiEventInjector.INSTANCE.fireAllEvents(DhApiBeforeGenericRenderCleanupEvent.class, renderEventParam.apiCopy);
-			
-			if (renderWireframe)
-			{
-				// default back to GL_FILL since all other rendering uses it 
-				LWJGL.glPolygonMode(GL11.GL_FRONT_AND_BACK, GL11.GL_FILL);
-				GLMC.enableFaceCulling();
-			}
-			
-			shaderProgram.unbind();
-			boxVertexBuffer.unbind();
-			boxIndexBuffer.unbind();
-			
-			// Restore GL states that 1.12.2 vanilla expects
-			#if MC_VER <= MC_1_12_2
-			GLMC.disableBlend();
-			GLMC.glBlendFuncSeparate(GL11.GL_SRC_ALPHA, GL11.GL_ONE, GL11.GL_ONE, GL11.GL_ZERO);
-			#endif
 		}
+	}
+	
+	@Override 
+	public void postRender(DhApiRenderParam apiRenderEventParam)
+	{
+		RenderParam renderEventParam = (RenderParam)apiRenderEventParam;
+		IProfilerWrapper profiler = renderEventParam.profiler;
+		
+		profiler.popPush("cleanup");
+		
+		ApiEventInjector.INSTANCE.fireAllEvents(DhApiBeforeGenericRenderCleanupEvent.class, renderEventParam.apiCopy);
+		
+		boolean renderWireframe = Config.Client.Advanced.Debugging.renderWireframe.get();
+		if (renderWireframe)
+		{
+			// default back to GL_FILL since all other rendering uses it 
+			LWJGL.glPolygonMode(GL11.GL_FRONT_AND_BACK, GL11.GL_FILL);
+			GLMC.enableFaceCulling();
+		}
+		
+		this.currentShaderProgram.unbind();
+		this.currentShaderProgram = null; // null to make tracking/debugging easier
+		
+		this.boxVertexBuffer.unbind();
+		this.boxIndexBuffer.unbind();
+		
+		// Restore GL states that 1.12.2 vanilla expects
+		#if MC_VER <= MC_1_12_2
+		GLMC.disableBlend();
+		GLMC.glBlendFuncSeparate(GL11.GL_SRC_ALPHA, GL11.GL_ONE, GL11.GL_ONE, GL11.GL_ZERO);
+		#endif
 	}
 	
 	//endregion
@@ -412,14 +357,14 @@ public class GlGenericObjectRenderer implements IDhApiGenericRenderer
 	
 	private void renderBoxGroupInstanced(
 			IDhApiGenericObjectShaderProgram shaderProgram, DhApiRenderParam renderEventParam, 
-			RenderableBoxGroup boxGroup, DhVec3d camPos,
+			IDhApiRenderableBoxGroup boxGroup, DhVec3d camPos,
 			IProfilerWrapper profiler)
 	{
 		try (IProfilerWrapper.IProfileBlock render_profile = profiler.push("vertex setup"))
 		{
 			
 			// update instance data //
-			DhApiRenderableBoxGroupShading shading = boxGroup.shading;
+			DhApiRenderableBoxGroupShading shading = boxGroup.getShading();
 			if (shading == null)
 			{
 				shading = DEFAULT_SHADING;
@@ -435,7 +380,7 @@ public class GlGenericObjectRenderer implements IDhApiGenericRenderer
 			// Bind instance data //
 			profiler.popPush("binding");
 			
-			GlGenericObjectVertexContainer container = (GlGenericObjectVertexContainer) boxGroup.vertexBufferContainer;
+			GlGenericObjectVertexContainer container = (GlGenericObjectVertexContainer) boxGroup.getRenderVertexBufferContainer();
 			
 			LWJGL.glBindBuffer(GL15.GL_ARRAY_BUFFER, container.color);
 			LWJGL.glEnableVertexAttribArray(1);
@@ -512,12 +457,12 @@ public class GlGenericObjectRenderer implements IDhApiGenericRenderer
 	
 	private void renderBoxGroupDirect(
 		IDhApiGenericObjectShaderProgram shaderProgram, 
-		DhApiRenderParam renderEventParam, 
-		RenderableBoxGroup boxGroup, DhVec3d camPos,
+		DhApiRenderParam renderEventParam,
+		IDhApiRenderableBoxGroup boxGroup, DhVec3d camPos,
 		IProfilerWrapper profiler)
 	{
 		profiler.popPush("shared uniforms");
-		DhApiRenderableBoxGroupShading shading = boxGroup.shading;
+		DhApiRenderableBoxGroupShading shading = boxGroup.getShading();
 		if (shading == null)
 		{
 			shading = DhApiRenderableBoxGroupShading.getUnshaded();
