@@ -61,7 +61,8 @@ public class FullDataSourceV2DTO
 	public static class DATA_FORMAT
 	{
 		public static final int V1_NO_ADJACENT_DATA = 1;
-		public static final int V2_LATEST = 2;
+		public static final int V2_NO_BLOCK_MODELS = 2;
+		public static final int V3_LATEST = 3;
 	}
 	
 	
@@ -127,7 +128,7 @@ public class FullDataSourceV2DTO
 			// the mapping hash isn't included since it takes significantly longer to calculate and 
 			// as of the time of this comment (2025-1-22) the checksum isn't used for anything so changing it shouldn't cause any issues
 			dto.dataChecksum = dataSource.hashCode();
-			dto.dataFormatVersion = DATA_FORMAT.V2_LATEST;
+			dto.dataFormatVersion = DATA_FORMAT.V3_LATEST;
 			dto.compressionModeValue = compressionModeEnum.value;
 			dto.lastModifiedUnixDateTime = dataSource.lastModifiedUnixDateTime;
 			dto.createdUnixDateTime = dataSource.createdUnixDateTime;
@@ -201,9 +202,10 @@ public class FullDataSourceV2DTO
 		// format validation //
 		
 		if (this.dataFormatVersion != DATA_FORMAT.V1_NO_ADJACENT_DATA 
-			&& this.dataFormatVersion != DATA_FORMAT.V2_LATEST)
+			&& this.dataFormatVersion != DATA_FORMAT.V2_NO_BLOCK_MODELS
+			&& this.dataFormatVersion != DATA_FORMAT.V3_LATEST)
 		{
-			throw new IllegalStateException("Data source population only supports formats: ["+DATA_FORMAT.V1_NO_ADJACENT_DATA +","+DATA_FORMAT.V2_LATEST +"], data format found: ["+this.dataFormatVersion+"].");
+			throw new IllegalStateException("Data source population only supports formats: ["+DATA_FORMAT.V1_NO_ADJACENT_DATA +","+DATA_FORMAT.V2_NO_BLOCK_MODELS +","+DATA_FORMAT.V3_LATEST +"], data format found: ["+this.dataFormatVersion+"].");
 		}
 		
 		if (direction != null
@@ -239,9 +241,12 @@ public class FullDataSourceV2DTO
 			array.add(FullDataPointUtil.EMPTY_DATA_POINT);
 		}
 		
+		// adjacent data needs them for models
+		readBlobToGenerationSteps(this.compressedColumnGenStepByteArray, dataSource.columnGenerationSteps, compressionModeEnum);
+		convertOldGenerationSteps(dataSource.columnGenerationSteps, this.dataFormatVersion);
+		
 		if (direction == null)
 		{
-			readBlobToGenerationSteps(this.compressedColumnGenStepByteArray, dataSource.columnGenerationSteps, compressionModeEnum);
 			readBlobToWorldCompressionMode(this.compressedWorldCompressionModeByteArray, dataSource.columnWorldCompressionMode, compressionModeEnum);
 			
 			if (this.dataFormatVersion == 1)
@@ -689,6 +694,23 @@ public class FullDataSourceV2DTO
 			throw new DataCorruptedException(e);
 		}
 	}
+	/** Columns built before block models get generated again */
+	public static void convertOldGenerationSteps(ByteArrayList columnGenerationSteps, byte dataFormatVersion)
+	{
+		if (dataFormatVersion >= DATA_FORMAT.V3_LATEST)
+		{
+			return;
+		}
+		
+		for (int i = 0; i < columnGenerationSteps.size(); i++)
+		{
+			if (columnGenerationSteps.getByte(i) >= EDhApiWorldGenerationStep.FEATURES.value)
+			{
+				columnGenerationSteps.set(i, EDhApiWorldGenerationStep.SURFACE.value);
+			}
+		}
+	}
+	
 	
 	
 	private static void writeWorldCompressionModeToBlob(ByteArrayList inputWorldCompressionModeByteArray, ByteArrayList outputByteArray, EDhApiDataCompressionMode compressionModeEnum) throws IOException

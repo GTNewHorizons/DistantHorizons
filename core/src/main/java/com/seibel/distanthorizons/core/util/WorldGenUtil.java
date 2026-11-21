@@ -18,7 +18,7 @@ public class WorldGenUtil
 		int centerChunkX, int centerChunkZ,
 		int maxChunkRadius)
 	{
-		if (Config.Common.WorldGenerator.generationMaxChunkRadius.get() <= 0)
+		if (maxChunkRadius <= 0)
 		{
 			return true;
 		}
@@ -26,9 +26,10 @@ public class WorldGenUtil
 		
 		DhBlockPos centerBlockPos = new DhChunkPos(centerChunkX, centerChunkZ).centerBlockPos();
 		int blockDistanceFromCenter = DhSectionPos.getChebyshevSignedBlockDistance(requestedPos, centerBlockPos);
+		
 		int maxBlockRadius = maxChunkRadius * LodUtil.CHUNK_WIDTH;
-		boolean requestInRadius = (blockDistanceFromCenter <= maxBlockRadius);
-		return requestInRadius;
+		
+		return blockDistanceFromCenter <= maxBlockRadius;
 	}
 	
 	/** @return -1 for infinity */

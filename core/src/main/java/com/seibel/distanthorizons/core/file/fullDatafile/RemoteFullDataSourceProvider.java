@@ -25,6 +25,7 @@ import com.seibel.distanthorizons.core.config.Config;
 import com.seibel.distanthorizons.core.dataObjects.fullData.sources.FullDataSourceV2;
 import com.seibel.distanthorizons.core.file.structure.ISaveStructure;
 import com.seibel.distanthorizons.core.generation.queues.RemoteWorldRetrievalQueue;
+import com.seibel.distanthorizons.core.generation.queues.IFullDataSourceRetrievalQueue;
 import com.seibel.distanthorizons.core.generation.tasks.DataSourceRetrievalResult;
 import com.seibel.distanthorizons.core.level.IDhLevel;
 import com.seibel.distanthorizons.core.generation.queues.LodRequestModule;
@@ -92,6 +93,18 @@ public class RemoteFullDataSourceProvider extends GeneratedFullDataSourceProvide
 
 	@Override
 	public boolean canQueueRetrievalNow() { return this.canQueueRetrievalNow(true); }
+
+	@Override
+	public boolean isRetrievalAllowed(long pos)
+	{
+		IFullDataSourceRetrievalQueue queue = this.worldGenQueueRef.get();
+		if (queue == null)
+		{
+			return false;
+		}
+		
+		return ((RemoteWorldRetrievalQueue) queue).isRetrievalAllowed(pos);
+	}
 	
 	@Override
 	@Nullable

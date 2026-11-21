@@ -12,6 +12,7 @@ import com.seibel.distanthorizons.core.level.IDhLevel;
 import com.seibel.distanthorizons.core.logging.DhLoggerBuilder;
 import com.seibel.distanthorizons.core.logging.f3.F3Screen;
 import com.seibel.distanthorizons.core.pos.DhChunkPos;
+import com.seibel.distanthorizons.core.pos.blockPos.DhBlockPosMutable;
 import com.seibel.distanthorizons.core.util.LodUtil;
 import com.seibel.distanthorizons.core.util.ThreadUtil;
 import com.seibel.distanthorizons.core.util.threading.ThreadPoolUtil;
@@ -50,9 +51,6 @@ public class ChunkUpdateQueueManager implements AutoCloseable
 	
 	public static final long UPDATE_DEBOUNCE_NANOS = TimeUnit.MILLISECONDS.toNanos(250);
 	
-	/** how long to wait between queue checks if the queue was empty */
-	private static final int PROCESS_QUEUE_DELAY_MS = 50;
-	
 	
 	
 	private static long lastOverloadedLogMessageMsTime = 0;
@@ -62,9 +60,12 @@ public class ChunkUpdateQueueManager implements AutoCloseable
 	private final Set<DhChunkPos> ignoredChunkPosSet = Collections.newSetFromMap(new ConcurrentHashMap<>());
 	
 	private final ExecutorService queueingThread;
+	private final Object queueThreadNotifier = new Object();
 	
 	public final ChunkPosQueue updateQueue;
 	public final ChunkPosQueue preUpdateQueue;
+	
+	private final DhBlockPosMutable playerBlockPos = new DhBlockPosMutable(0,0, 0);
 	
 	/** 
 	 * tracking nearby chunks is necessary for lighting
@@ -160,6 +161,12 @@ public class ChunkUpdateQueueManager implements AutoCloseable
 		{
 			this.sendOverloadMessage();
 		}
+		
+		// trigger the update thread to handle these new chunks
+		synchronized(this.queueThreadNotifier)
+		{
+			this.queueThreadNotifier.notifyAll();
+		}
 	}
 	
 	
@@ -246,10 +253,14 @@ public class ChunkUpdateQueueManager implements AutoCloseable
 				if (this.updateQueue.isEmpty() 
 					&& this.preUpdateQueue.isEmpty())
 				{
-					Thread.sleep(PROCESS_QUEUE_DELAY_MS);
-					
 					// clean up to fix expired chunks not being cleaned up if the queue is empty
 					this.queuedChunkWrapperByChunkPos.cleanUp();
+					
+					// wait until more chunks have been added to the queue
+					synchronized(this.queueThreadNotifier)
+					{
+						this.queueThreadNotifier.wait();
+					}
 				}
 			}
 			catch (InterruptedException ignored)
@@ -270,7 +281,8 @@ public class ChunkUpdateQueueManager implements AutoCloseable
 		if (MC_CLIENT != null && MC_CLIENT.playerExists())
 		{
 			// Local worlds & multiplayer
-			this.setCenter(MC_CLIENT.getPlayerChunkPos());
+			MC_CLIENT.getPlayerBlockPosMutable(this.playerBlockPos);
+			this.setCenter(this.playerBlockPos);
 			maxUpdateSizeMultiplier = MC_CLIENT.clientConnectedToDedicatedServer() ? 1 : MC_SHARED.getPlayerCount();
 		}
 		else
@@ -333,28 +345,27 @@ public class ChunkUpdateQueueManager implements AutoCloseable
 	
 	private void tryDispatchReadyChunkUpdate()
 	{
-		ChunkUpdateData updateData = this.updateQueue.popClosest();
-		if (updateData == null)
+		ChunkUpdateData peekedUpdateData = this.updateQueue.peekClosest();
+		if (peekedUpdateData == null)
 		{
 			return;
 		}
 		
 		// wait for UPDATE_DEBOUNCE_NANOS before updating
 		// the chunk so we can make sure the neighbors are queued
-		long updateWaitNanoTime = System.nanoTime() - updateData.firstQueuedNanoTime;
+		long updateWaitNanoTime = System.nanoTime() - peekedUpdateData.firstQueuedNanoTime;
 		if (updateWaitNanoTime < UPDATE_DEBOUNCE_NANOS)
 		{
-			this.updateQueue.addItem(updateData.chunkWrapper.getChunkPos(), updateData);
 			return;
 		}
 		
 		AbstractExecutorService executor = ThreadPoolUtil.getChunkToLodBuilderExecutor();
 		if (executor == null)
 		{
-			this.updateQueue.addItem(updateData.chunkWrapper.getChunkPos(), updateData);
 			return;
 		}
 		
+		ChunkUpdateData updateData = this.updateQueue.popClosest();
 		try
 		{
 			executor.execute(() -> this.processChunkUpdate(updateData));
@@ -427,10 +438,10 @@ public class ChunkUpdateQueueManager implements AutoCloseable
 	//==================//
 	//region
 	
-	public void setCenter(DhChunkPos newCenter)
+	public void setCenter(DhBlockPosMutable newCenter)
 	{
-		this.updateQueue.setCenter(newCenter);
-		this.preUpdateQueue.setCenter(newCenter);
+		this.updateQueue.setCenterChunkPos(newCenter);
+		this.preUpdateQueue.setCenterChunkPos(newCenter);
 	}
 	
 	//endregion

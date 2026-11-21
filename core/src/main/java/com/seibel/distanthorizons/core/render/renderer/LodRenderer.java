@@ -19,10 +19,15 @@
 
 package com.seibel.distanthorizons.core.render.renderer;
 
+import com.seibel.distanthorizons.api.enums.rendering.EDhApiTerrainRenderPass;
 import com.seibel.distanthorizons.api.enums.rendering.EDhApiTransparency;
 import com.seibel.distanthorizons.api.interfaces.render.IDhApiCustomRenderRegister;
+import com.seibel.distanthorizons.api.interfaces.render.IDhApiRenderableBoxGroup;
 import com.seibel.distanthorizons.api.interfaces.render.renderDef.*;
+import com.seibel.distanthorizons.api.interfaces.render.renderDef.objects.IDhApiGenericObjectVertexBufferContainer;
 import com.seibel.distanthorizons.api.methods.events.abstractEvents.*;
+import com.seibel.distanthorizons.api.methods.events.sharedParameterObjects.DhApiRenderParam;
+import com.seibel.distanthorizons.api.objects.render.DhApiRenderableBoxGroupShading;
 import com.seibel.distanthorizons.core.config.Config;
 import com.seibel.distanthorizons.core.dataObjects.render.bufferBuilding.LodBufferContainer;
 import com.seibel.distanthorizons.core.dependencyInjection.ModAccessorInjector;
@@ -31,8 +36,12 @@ import com.seibel.distanthorizons.core.logging.DhLogger;
 import com.seibel.distanthorizons.core.logging.DhLoggerBuilder;
 import com.seibel.distanthorizons.core.pos.DhSectionPos;
 import com.seibel.distanthorizons.core.render.DhApiRenderProxy;
+import com.seibel.distanthorizons.core.render.DhBlockTextureAtlasUploadHandler;
 import com.seibel.distanthorizons.core.render.RenderBufferHandler;
 import com.seibel.distanthorizons.core.render.RenderParam;
+import com.seibel.distanthorizons.core.util.LodUtil;
+import com.seibel.distanthorizons.core.util.math.DhMat4f;
+import com.seibel.distanthorizons.core.util.math.DhVec3d;
 import com.seibel.distanthorizons.core.util.objects.SortedArraySet;
 import com.seibel.distanthorizons.core.wrapperInterfaces.minecraft.IMinecraftClientWrapper;
 import com.seibel.distanthorizons.core.wrapperInterfaces.minecraft.IProfilerWrapper;
@@ -40,6 +49,8 @@ import com.seibel.distanthorizons.core.wrapperInterfaces.modAccessor.IIrisAccess
 import com.seibel.distanthorizons.coreapi.DependencyInjection.ApiEventInjector;
 
 import java.awt.*;
+import java.util.Collection;
+import java.util.HashMap;
 
 /**
  * This is where all the magic happens. <br>
@@ -60,6 +71,10 @@ public class LodRenderer
 	private static final IIrisAccessor IRIS_ACCESSOR = ModAccessorInjector.INSTANCE.get(IIrisAccessor.class);
 	
 	public static final LodRenderer INSTANCE = new LodRenderer();
+	
+	private static final DhApiBeforeGenericObjectRenderEvent.EventParam GENERIC_OBJ_RENDER_EVENT_PARAM = new DhApiBeforeGenericObjectRenderEvent.EventParam();
+	
+	private static final HashMap<AbstractDhApiRenderDefinition, DhBlockTextureAtlasUploadHandler> TEXTURE_UPLOAD_HANDLER_BY_RENDER_DEF = new HashMap<>(); 
 	
 	
 	private boolean vanillaSettingsOverridden = false;
@@ -211,6 +226,25 @@ public class LodRenderer
 				
 				
 				
+				//==================//
+				// texture handling //
+				//==================//
+				
+				// each render definition needs a separate render handler since each will have a
+				// different backend for the actual texture handling
+				DhBlockTextureAtlasUploadHandler textureUploadHandler = TEXTURE_UPLOAD_HANDLER_BY_RENDER_DEF.get(renderDefinition);
+				if (textureUploadHandler == null)
+				{
+					IDhApiBlockTextureAtlas textureAtlasWrapper = renderDefinition.getTextureAtlasWrapper();
+					textureUploadHandler = new DhBlockTextureAtlasUploadHandler(textureAtlasWrapper);
+					TEXTURE_UPLOAD_HANDLER_BY_RENDER_DEF.put(renderDefinition, textureUploadHandler);
+				}
+				
+				profiler.popPush("block texture upload");
+				textureUploadHandler.uploadPendingTiles();
+				
+				
+				
 				//=========================//
 				// opaque and non-deferred //
 				// transparent rendering   //
@@ -219,27 +253,40 @@ public class LodRenderer
 				// opaque LODs
 				profiler.popPush("LOD Opaque");
 				
-				this.renderTerrain(terrainRenderer, renderBufferHandler, renderParams, /*opaquePass*/ true);
+				this.renderTerrain(terrainRenderer, renderBufferHandler, renderParams, EDhApiTerrainRenderPass.OPAQUE);
+				
+				// called early when SSAO is off to avoid issues with pre 26.3 Iris
+				boolean ssaoEnabled = Config.Client.Advanced.Graphics.enableSsao.get();
+				if (!ssaoEnabled)
+				{
+					profiler.popPush("LOD Opaque Without SSAO");
+					this.renderTerrain(terrainRenderer, renderBufferHandler, renderParams, EDhApiTerrainRenderPass.OPAQUE_WITHOUT_SSAO);
+				}
 				
 				// custom objects with SSAO
 				if (Config.Client.Advanced.Graphics.GenericRendering.enableGenericRendering.get())
 				{
 					profiler.popPush("Custom Objects");
-					genericRenderer.render(renderParams, genericRegister, true);
+					this.renderGenericObjects(renderParams, genericRegister, genericRenderer, true);
 				}
 				
 				// SSAO
-				if (Config.Client.Advanced.Graphics.enableSsao.get())
+				if (ssaoEnabled)
 				{
 					profiler.popPush("LOD SSAO");
 					ssaoRenderer.render(renderParams);
+					
+					// this render pass is for things like tall grass, where vanilla MC
+					// draws them without SSAO to prevent them from getting too dark
+					profiler.popPush("LOD Opaque Without SSAO");
+					this.renderTerrain(terrainRenderer, renderBufferHandler, renderParams, EDhApiTerrainRenderPass.OPAQUE_WITHOUT_SSAO);
 				}
 				
 				// custom objects without SSAO
 				if (Config.Client.Advanced.Graphics.GenericRendering.enableGenericRendering.get())
 				{
 					profiler.popPush("Custom Objects");
-					genericRenderer.render(renderParams, genericRegister, false);
+					this.renderGenericObjects(renderParams, genericRegister, genericRenderer, false);
 				}
 				
 				// combined pass transparent rendering
@@ -247,7 +294,7 @@ public class LodRenderer
 					&& Config.Client.Advanced.Graphics.Quality.transparency.get() == EDhApiTransparency.COMPLETE)
 				{
 					profiler.popPush("LOD Transparent");
-					this.renderTerrain(terrainRenderer, renderBufferHandler, renderParams, /*opaquePass*/ false);
+					this.renderTerrain(terrainRenderer, renderBufferHandler, renderParams, EDhApiTerrainRenderPass.TRANSPARENT);
 				}
 				
 				// fog
@@ -338,7 +385,7 @@ public class LodRenderer
 				if (Config.Client.Advanced.Graphics.Quality.transparency.get() == EDhApiTransparency.COMPLETE)
 				{
 					profiler.popPush("LOD Transparent");
-					this.renderTerrain(terrainRenderer, renderBufferHandler, renderParams, /*opaquePass*/ false);
+					this.renderTerrain(terrainRenderer, renderBufferHandler, renderParams, EDhApiTerrainRenderPass.TRANSPARENT);
 					
 					
 					boolean cancelFogEvent = ApiEventInjector.INSTANCE.fireAllEvents(DhApiBeforeFogRenderEvent.class, fogRenderEventParam);
@@ -369,21 +416,137 @@ public class LodRenderer
 	
 	
 	
-	//===============//
-	// LOD rendering //
-	//===============//
+	//===================//
+	// terrain rendering //
+	//===================//
 	//region
 	
-	private void renderTerrain(IDhApiTerrainRenderer terrainRenderer, RenderBufferHandler lodBufferHandler, RenderParam renderEventParam, boolean opaquePass)
+	private void renderTerrain(IDhApiTerrainRenderer terrainRenderer, RenderBufferHandler lodBufferHandler, RenderParam renderEventParam, EDhApiTerrainRenderPass renderPass)
 	{
 		//===========//
 		// rendering //
 		//===========//
 		
-		SortedArraySet<LodBufferContainer> lodBufferContainer = lodBufferHandler.getColumnRenderBuffers();
+		SortedArraySet<LodBufferContainer> lodBufferContainer = lodBufferHandler.getColumnRenderBuffers(renderEventParam);
 		if (lodBufferContainer != null)
 		{
-			terrainRenderer.render(renderEventParam, opaquePass, lodBufferContainer);
+			terrainRenderer.render(renderEventParam, renderPass, lodBufferContainer);
+		}
+	}
+	
+	//endregion
+	
+	
+	
+	//==========================//
+	// generic object rendering //
+	//==========================//
+	//region
+	
+	private void renderGenericObjects(
+		RenderParam renderEventParam,
+		IDhApiCustomRenderRegister renderRegister, IDhApiGenericRenderer genericRenderer,
+		boolean renderingWithSsao)
+	{
+		IProfilerWrapper profiler = renderEventParam.profiler;
+		
+		try (IProfilerWrapper.IProfileBlock generic_profile = profiler.push("setup"))
+		{
+			//==============//
+			// render setup //
+			//==============//
+			//#region
+			
+			ApiEventInjector.INSTANCE.fireAllEvents(DhApiBeforeGenericRenderSetupEvent.class, renderEventParam.apiCopy);
+			
+			//#endregion
+			
+			
+			
+			//===========//
+			// rendering //
+			//===========//
+			//#region
+			
+			Collection<? extends IDhApiRenderableBoxGroup> boxList = renderRegister.getRenderBoxList();
+			for (IDhApiRenderableBoxGroup apiBoxGroup : boxList)
+			{
+				RenderableBoxGroup boxGroup = (RenderableBoxGroup)apiBoxGroup;
+				
+				
+				// validation //
+				
+				// shouldn't happen, but just in case
+				if (boxGroup == null)
+				{
+					continue;
+				}
+				
+				// skip boxes that shouldn't render this pass
+				if (boxGroup.ssaoEnabled != renderingWithSsao)
+				{
+					continue;
+				}
+				
+				profiler.popPush("render prep");
+				boxGroup.preRender(renderEventParam); // called even if the group is inactive, so the group can be activate if desired
+				
+				// ignore inactive groups
+				if (!boxGroup.active)
+				{
+					continue;
+				}
+				
+				// allow API users to cancel this object's rendering
+				GENERIC_OBJ_RENDER_EVENT_PARAM.update(renderEventParam, boxGroup);
+				boolean cancelRendering = ApiEventInjector.INSTANCE.fireAllEvents(DhApiBeforeGenericObjectRenderEvent.class, GENERIC_OBJ_RENDER_EVENT_PARAM);
+				GENERIC_OBJ_RENDER_EVENT_PARAM.clearLevelReferences();
+				
+				if (cancelRendering)
+				{
+					continue;
+				}
+				
+				// update instanced data if needed
+				{
+					boxGroup.tryUpdateInstancedDataAsync(renderEventParam);
+					
+					// skip groups that haven't been uploaded yet
+					if (boxGroup.getRenderVertexBufferContainer().getState() != IDhApiGenericObjectVertexBufferContainer.EState.RENDER)
+					{
+						continue;
+					}
+				}
+				
+				
+				
+				// render //
+				
+				genericRenderer.preRender(renderEventParam);
+				
+				profiler.popPush("rendering");
+				try (IProfilerWrapper.IProfileBlock namespace_profile = profiler.push(boxGroup.getResourceLocationNamespace());
+					IProfilerWrapper.IProfileBlock location_profile = profiler.push(boxGroup.getResourceLocationPath()))
+				{
+					genericRenderer.render(renderEventParam, boxGroup);
+				}
+				
+				genericRenderer.postRender(renderEventParam);
+			}
+			
+			//#endregion
+			
+			
+			
+			//==========//
+			// clean up //
+			//==========//
+			//region
+			
+			profiler.popPush("cleanup");
+			ApiEventInjector.INSTANCE.fireAllEvents(DhApiBeforeGenericRenderCleanupEvent.class, renderEventParam);
+			
+			//endregion
 		}
 	}
 	

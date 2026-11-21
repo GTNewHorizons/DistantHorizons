@@ -20,15 +20,16 @@
 package com.seibel.distanthorizons.core.wrapperInterfaces.block;
 
 import com.seibel.distanthorizons.core.dataObjects.render.textures.BlockFaceTexture;
+import com.seibel.distanthorizons.core.dataObjects.render.textures.DhBlockModelQuad;
 import com.seibel.distanthorizons.core.enums.EDhDirection;
 import com.seibel.distanthorizons.coreapi.interfaces.dependencyInjection.IBindable;
 import org.jetbrains.annotations.Nullable;
 
 /**
- * Provides the baked {@link BlockFaceTexture} for a given block state and face,
+ * Provides the baked {@link BlockFaceTexture} for a given block state and face, and its model,
  * used when building textured LODs.
  */
-public interface IBlockStateFaceTextureProvider extends IBindable
+public interface IBlockStateTextureAndModelProvider extends IBindable
 {
 	/**
 	 * May be slow the first time a given block state is requested
@@ -40,7 +41,18 @@ public interface IBlockStateFaceTextureProvider extends IBindable
 	 */
 	@Nullable
 	BlockFaceTexture getFaceTexture(IBlockStateWrapper blockState, EDhDirection direction);
+	
+	/**
+	 * May be slow the first time a given block state is requested
+	 * since the model needs to be read.
+	 *
+	 * @return an empty array if the block state has no model quads
+	 */
+	DhBlockModelQuad[] getModel(IBlockStateWrapper blockState);
 
+	/** True if this face takes the block's tint color */
+	boolean isFaceTinted(IBlockStateWrapper blockState, EDhDirection direction);
+	
 	/** Should be called whenever MC's textures change, IE when resource packs are swapped. */
 	void clear();
 

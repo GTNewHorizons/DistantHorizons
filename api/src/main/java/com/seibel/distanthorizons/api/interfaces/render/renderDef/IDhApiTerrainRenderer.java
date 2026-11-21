@@ -19,6 +19,7 @@
 
 package com.seibel.distanthorizons.api.interfaces.render.renderDef;
 
+import com.seibel.distanthorizons.api.enums.rendering.EDhApiTerrainRenderPass;
 import com.seibel.distanthorizons.api.interfaces.render.renderDef.objects.IDhApiTerrainBufferContainer;
 import com.seibel.distanthorizons.api.methods.events.sharedParameterObjects.DhApiRenderParam;
 import com.seibel.distanthorizons.api.objects.util.IDhApiReadOnlyList;
@@ -31,17 +32,17 @@ import java.util.List;
  * Handles rendering Distant Horizons LOD terrain.
  * 
  * @since API 7.3.0
- * @version 2026-10-02
+ * @version 2026-11-10
  */
 public interface IDhApiTerrainRenderer
 {
 	/**
-	 * @param bufferContainers should be rendered in order (i.e. index 0 first).
+	 * @param bufferContainers sorted in near-to-far order.
 	 *                      When you receive this list it will already have been culled
 	 *                      as defined by the frustum culler.
 	 */
 	void render(
-		DhApiRenderParam renderEventParam, boolean opaquePass,
+		DhApiRenderParam renderEventParam, EDhApiTerrainRenderPass renderPass,
 		IDhApiReadOnlyList<? extends IDhApiTerrainBufferContainer> bufferContainers);
 	
 	

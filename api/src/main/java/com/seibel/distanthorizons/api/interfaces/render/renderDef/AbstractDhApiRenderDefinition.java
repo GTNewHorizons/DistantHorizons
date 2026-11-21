@@ -3,6 +3,7 @@ package com.seibel.distanthorizons.api.interfaces.render.renderDef;
 import com.seibel.distanthorizons.api.enums.config.EDhApiDepthDirection;
 import com.seibel.distanthorizons.api.enums.config.EDhApiDepthRange;
 import com.seibel.distanthorizons.api.enums.config.EDhApiRenderingApi;
+import com.seibel.distanthorizons.api.enums.rendering.EDhApiTerrainVertexFormat;
 import com.seibel.distanthorizons.api.interfaces.override.IDhApiOverrideable;
 import com.seibel.distanthorizons.api.interfaces.render.IDhApiRenderProxy;
 import com.seibel.distanthorizons.api.interfaces.render.renderDef.objects.IDhApiVertexBufferWrapper;
@@ -18,7 +19,7 @@ import com.seibel.distanthorizons.coreapi.DependencyInjection.OverrideInjector;
  * attempting to bind directly via the {@link OverrideInjector#bind(Class, IDhApiOverrideable)} will cause
  * crashing due to render data being in the wrong format/class for the new renderer.
  * 
- * @version 2026-10-02
+ * @version 2026-10-18
  * @since API 7.3.0
  * @see IDhApiRenderProxy#setRenderDefinitionOverrideAsync(AbstractDhApiRenderDefinition, String) 
  * @see IDhApiRenderProxy#clearRenderDefinitionOverrideAsync() 
@@ -46,6 +47,14 @@ public abstract class AbstractDhApiRenderDefinition implements IDhApiOverrideabl
 	 */
 	public abstract boolean isNativeRenderer();
 	
+	/** 
+	 * The vertex layout DH's terrain buffers are built with,
+	 * {@link EDhApiTerrainVertexFormat#POS_META_COLOR_MATERIAL_NORMAL_TEXTURE} by default.
+	 * 
+	 * @since API 7.3.0
+	 */
+	public EDhApiTerrainVertexFormat getTerrainVertexFormat() { return EDhApiTerrainVertexFormat.POS_META_COLOR_MATERIAL_NORMAL_TEXTURE; }
+	
 	//endregion
 	
 	
@@ -65,6 +74,7 @@ public abstract class AbstractDhApiRenderDefinition implements IDhApiOverrideabl
 	public abstract IDhApiVanillaFadeRenderer getVanillaFadeRenderer();
 	public abstract IDhApiTestTriangleRenderer getTestTriangleRenderer();
 	public abstract IDhApiGenericRenderer getGenericRenderer();
+	public abstract IDhApiBlockTextureAtlas getTextureAtlasWrapper();
 	
 	//endregion
 	

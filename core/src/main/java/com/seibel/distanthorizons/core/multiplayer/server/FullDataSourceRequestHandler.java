@@ -243,7 +243,8 @@ public class FullDataSourceRequestHandler implements AutoCloseable
 		provider.getAsync(pos)
 			.thenAccept((FullDataSourceV2 fullDataSource) ->
 		{
-			if (provider.generationStepsAreFullyGenerated(fullDataSource.columnGenerationSteps))
+			if (requestGroup.isWorldGenTaskComplete()
+				|| provider.generationStepsAreFullyGenerated(pos, fullDataSource.columnGenerationSteps))
 			{
 				//LOGGER.info("sending - complete [" + DhSectionPos.toString(pos) + "]");
 				requestGroup.fullDataSource = fullDataSource;
@@ -272,11 +273,6 @@ public class FullDataSourceRequestHandler implements AutoCloseable
 					requestData.rateLimiterSet.generationRequestRateLimiter.release();
 					requestData.message.sendResponse(new SectionRequiresSplittingException());
 				}
-			}
-			else if (requestGroup.isWorldGenTaskComplete())
-			{
-				//LOGGER.info("sending - retry [" + DhSectionPos.toString(pos) + "]");
-				this.tryFulfillDataSourceRequestGroup(requestGroup, pos);
 			}
 			else
 			{

@@ -74,11 +74,6 @@ public class LodQuadTree extends QuadTree<LodRenderSection> implements IDebugRen
 	
 	private static final DebugWireframeHandler DEBUG_RENDERER = SingletonInjector.INSTANCE.get(DebugWireframeHandler.class);
 	
-	/**
-	 * How long the retrieval queue thread will sleep once it runs out of work 
-	 * before checking again for new tasks.
-	 */
-	private static final long QUEUE_THREAD_IDLE_WAIT_MS = 100L;
 	
 	
 	public final int blockRenderDistanceDiameter;
@@ -530,13 +525,11 @@ public class LodQuadTree extends QuadTree<LodRenderSection> implements IDebugRen
 						if (!somethingQueued)
 						{
 							// there's work in the queue, but we weren't able to
-							// queue any of it this loop (generator queue is probably full)
-							// wait a moment then try again
-							try
-							{
-								Thread.sleep(QUEUE_THREAD_IDLE_WAIT_MS);
-							}
-							catch (InterruptedException e) { break; }
+							// queue any of it this loop (generator queue is probably full).
+							// Stop here so the next tick restarts this thread with a new snapshot of the world gen nodes,
+							// otherwise sections that become renderable while the queue stays busy
+							// are never checked for missing generation and stay as holes.
+							break;
 						}
 					}
 				}
@@ -885,12 +878,7 @@ public class LodQuadTree extends QuadTree<LodRenderSection> implements IDebugRen
 			long missingPos = this.sortedMissingPosList.get(i);
 			
 			// is this position within acceptable generator range?
-			boolean posInRange = WorldGenUtil.isPosInWorldGenRange(
-				missingPos,
-				Config.Common.WorldGenerator.generationCenterChunkX.get(), Config.Common.WorldGenerator.generationCenterChunkZ.get(),
-				Config.Common.WorldGenerator.generationMaxChunkRadius.get()
-			);
-			if (!posInRange)
+			if (!this.fullDataSourceProvider.isRetrievalAllowed(missingPos))
 			{
 				continue;
 			}
@@ -1343,6 +1331,18 @@ public class LodQuadTree extends QuadTree<LodRenderSection> implements IDebugRen
 		{
 			long adjacentPos = DhSectionPos.getAdjacentPos(pos, direction);
 			this.sectionsToReload.add(adjacentPos);
+		}
+		
+		// fluid diagonals are only used at the block detail level
+		if (DhSectionPos.getDetailLevel(pos) == DhSectionPos.SECTION_BLOCK_DETAIL_LEVEL)
+		{
+			// diagonal sections use this section's corner for their fluid surfaces
+			long northPos = DhSectionPos.getAdjacentPos(pos, EDhDirection.NORTH);
+			long southPos = DhSectionPos.getAdjacentPos(pos, EDhDirection.SOUTH);
+			this.sectionsToReload.add(DhSectionPos.getAdjacentPos(northPos, EDhDirection.WEST));
+			this.sectionsToReload.add(DhSectionPos.getAdjacentPos(northPos, EDhDirection.EAST));
+			this.sectionsToReload.add(DhSectionPos.getAdjacentPos(southPos, EDhDirection.WEST));
+			this.sectionsToReload.add(DhSectionPos.getAdjacentPos(southPos, EDhDirection.EAST));
 		}
 	}
 	

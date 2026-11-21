@@ -71,7 +71,7 @@ public class RenderableBoxGroup
 	
 	// instance data
 	private AbstractDhApiRenderDefinition currentRenderDef = null;
-	public IDhApiGenericObjectVertexBufferContainer vertexBufferContainer;
+	private IDhApiGenericObjectVertexBufferContainer vertexBufferContainer;
 	/** double buffering for thread safety and to prevent locking the render thread during update */
 	private IDhApiGenericObjectVertexBufferContainer altVertexBufferContainer;
 	
@@ -148,6 +148,9 @@ public class RenderableBoxGroup
 	public void setShading(DhApiRenderableBoxGroupShading shading) { this.shading = shading; }
 	@Override
 	public DhApiRenderableBoxGroupShading getShading() { return this.shading; }
+	
+	@Override
+	public IDhApiGenericObjectVertexBufferContainer getRenderVertexBufferContainer() { return this.vertexBufferContainer; }
 	
 	//endregion
 	

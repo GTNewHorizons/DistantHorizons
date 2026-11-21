@@ -166,6 +166,8 @@ public class ClientApi
 	 */
 	private boolean irisShadersEnabledLastFrame = false;
 	
+	public boolean useDhRenderInjectionPoints = true;
+	
 	
 	
 	//==============//
@@ -338,13 +340,27 @@ public class ClientApi
 	//region lod rendering
 	
 	/** Should be called before {@link ClientApi#renderDeferredLodsForShaders} */
-	public void renderLods() { this.renderLodLayer(false); }
+	public void renderLods() 
+	{
+		if (this.useDhRenderInjectionPoints)
+		{
+			this.renderLodLayer(false);
+		}
+	}
 	
 	/** 
 	 * Only necessary when Shaders are in use.
 	 * Should be called after {@link ClientApi#renderLods} 
 	 */
-	public void renderDeferredLodsForShaders() { this.renderLodLayer(true); }
+	public void renderDeferredLodsForShaders()
+	{
+		if (this.useDhRenderInjectionPoints)
+		{
+			this.renderLodLayer(true);
+		}
+	}
+	
+	public void renderLodsFromApi(boolean renderingDeferredLayer) { this.renderLodLayer(renderingDeferredLayer); }
 	
 	private void renderLodLayer(boolean renderingDeferredLayer)
 	{
@@ -675,27 +691,11 @@ public class ClientApi
 	 * The first fade pass.
 	 * Called after MC finishes rendering the opaque passes. 
 	 */
-	public void renderFadeOpaque()
+	public void renderFadeOpaque() 
 	{
-		IDhApiVanillaFadeRenderer fadeRenderer = tryGetVanillaFadeRenderer();
-		if (fadeRenderer == null)
+		if (this.useDhRenderInjectionPoints)
 		{
-			return;
-		}
-		
-		// only fade when DH is rendering
-		if (Config.Client.Advanced.Debugging.rendererMode.get() == EDhApiRendererMode.DEFAULT
-			&&
-			(
-				// only fade when requested
-				Config.Client.Advanced.Graphics.Quality.vanillaFadeMode.get() == EDhApiMcRenderingFadeMode.DOUBLE_PASS
-				// or if LOD-only mode is enabled (fading is used to remove the MC render pass)
-				|| Config.Client.Advanced.Debugging.lodOnlyMode.get()
-			)
-			&& shouldRenderFade())
-		{
-			RENDER_PARAMS.update(EDhApiRenderPass.OPAQUE, RENDER_STATE);
-			fadeRenderer.render(RENDER_PARAMS);
+			this.renderFadePass(EDhApiMcRenderingFadeMode.DOUBLE_PASS);
 		}
 	}
 	/** 
@@ -703,63 +703,71 @@ public class ClientApi
 	 * Called after MC finishes rendering both opaque
 	 * and transparent passes. 
 	 */
-	public void renderFadeTransparent()
+	public void renderFadeTransparent() 
 	{
-		IDhApiVanillaFadeRenderer fadeRenderer = tryGetVanillaFadeRenderer();
-		if (fadeRenderer == null)
+		if (this.useDhRenderInjectionPoints)
 		{
-			return;
-		}
-		
-		// only fade when DH is rendering
-		if (Config.Client.Advanced.Debugging.rendererMode.get() == EDhApiRendererMode.DEFAULT)
-		{
-			boolean renderFade =
-				(
-					// only fade when requested
-					Config.Client.Advanced.Graphics.Quality.vanillaFadeMode.get() != EDhApiMcRenderingFadeMode.NONE
-					// or if LOD-only mode is enabled (fading is used to remove the MC render pass)
-					|| Config.Client.Advanced.Debugging.lodOnlyMode.get()
-				)
-				&& shouldRenderFade();
-			if (renderFade)
-			{
-				RENDER_PARAMS.update(EDhApiRenderPass.TRANSPARENT, RENDER_STATE);
-				fadeRenderer.render(RENDER_PARAMS);
-			}
+			this.renderFadePass(EDhApiMcRenderingFadeMode.SINGLE_PASS);
 		}
 	}
-	@Nullable
-	private static IDhApiVanillaFadeRenderer tryGetVanillaFadeRenderer()
+	
+	public void renderFadeFromApi(EDhApiMcRenderingFadeMode fadeMode) { this.renderFadePass(fadeMode); }
+	
+	private void renderFadePass(EDhApiMcRenderingFadeMode expectedFadeMode)
 	{
 		// the definition may be null if we're in the middle of
 		// changing it, or if there was an issue
 		AbstractDhApiRenderDefinition renderDef = RENDER_PARAMS.renderDefinition;
 		if (renderDef == null)
 		{
-			return null;
+			return;
 		}
 		
-		return renderDef.getVanillaFadeRenderer();
-	}
-	
-	private static boolean shouldRenderFade()
-	{
+		// the fade renderer shouldn't be null, but just in case
+		IDhApiVanillaFadeRenderer fadeRenderer = renderDef.getVanillaFadeRenderer();
+		if (fadeRenderer == null)
+		{
+			return;
+		}
+		
+		// only fade when DH is rendering
+		if (Config.Client.Advanced.Debugging.rendererMode.get() != EDhApiRendererMode.DEFAULT)
+		{
+			return;
+		}
+		
+		boolean renderFade =
+			(
+				// only fade when requested
+				Config.Client.Advanced.Graphics.Quality.vanillaFadeMode.get() == expectedFadeMode
+				// double pass also runs the single pass
+				|| Config.Client.Advanced.Graphics.Quality.vanillaFadeMode.get() == EDhApiMcRenderingFadeMode.DOUBLE_PASS
+				// or if LOD-only mode is enabled (fading is used to remove the MC render pass)
+				|| Config.Client.Advanced.Debugging.lodOnlyMode.get()
+			);
+		if (!renderFade)
+		{
+			return;
+		}
+		
 		// don't fade when Iris shaders are active, otherwise the rendering can get weird
 		if (DelayedAccessors.IRIS != null
 			&& DelayedAccessors.IRIS.isShaderPackInUse())
 		{
-			return false;
+			return;
 		}
 		
 		// Don't render fade through immersive portals, this causes the fade to apply incorrectly
-		if (DelayedAccessors.IMMERSIVE_PORTALS != null 
+		if (DelayedAccessors.IMMERSIVE_PORTALS != null
 			&& DelayedAccessors.IMMERSIVE_PORTALS.isRenderingPortal())
 		{
-			return false;
+			return;
 		}
 		
-		return true;
+		
+		
+		RENDER_PARAMS.update(EDhApiRenderPass.TRANSPARENT, RENDER_STATE);
+		fadeRenderer.render(RENDER_PARAMS);
 	}
 	
 	//endregion
@@ -944,6 +952,21 @@ public class ClientApi
 	
 	//endregion
 	
+	
+	
+	//================//
+	// helper methods //
+	//================//
+	//region helper methods
+	
+	/** Called when the world is closed so the last rendered level can be garbage collected. */
+	public static void clearLevelReferences()
+	{
+		RENDER_STATE.clearLevelReferences();
+		RENDER_PARAMS.clearLevelReferences();
+	}
+	
+	//endregion helper methods
 	
 	
 }

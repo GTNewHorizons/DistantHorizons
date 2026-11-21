@@ -98,6 +98,12 @@ public class RemoteWorldRetrievalQueue extends AbstractFullDataNetworkRequestQue
 	
 	@Override
 	protected int getRequestRateLimit() { return this.networkState.sessionConfig.getGenerationRequestRateLimit(); }
+
+	public boolean isRetrievalAllowed(long sectionPos)
+	{
+		return this.sectionInAllowedGenerationRadius(sectionPos, this.level.getTargetPosForGeneration());
+	}
+
 	@Override
 	protected boolean sectionInAllowedGenerationRadius(long sectionPos, DhBlockPos2D targetPos)
 	{

@@ -20,6 +20,7 @@
 package com.seibel.distanthorizons.api.interfaces.render.renderDef;
 
 import com.seibel.distanthorizons.api.interfaces.render.IDhApiCustomRenderRegister;
+import com.seibel.distanthorizons.api.interfaces.render.IDhApiRenderableBoxGroup;
 import com.seibel.distanthorizons.api.methods.events.sharedParameterObjects.DhApiRenderParam;
 
 /**
@@ -27,13 +28,23 @@ import com.seibel.distanthorizons.api.methods.events.sharedParameterObjects.DhAp
  * generic objects (ie clouds and beacons).
  *
  * @since API 7.3.0
- * @version 2026-10-02
+ * @version 2026-10-31
  */
 public interface IDhApiGenericRenderer extends AutoCloseable
 {
-	void render(
-		DhApiRenderParam renderEventParam, 
-		IDhApiCustomRenderRegister renderRegister, boolean renderingWithSsao);
+	/** 
+	 * Called before {@link #render(DhApiRenderParam, IDhApiRenderableBoxGroup)}. <br>
+	 * Can be used to set up shared objects or set render states.
+	 */
+	void preRender(DhApiRenderParam renderEventParam);
+	
+	void render(DhApiRenderParam renderEventParam, IDhApiRenderableBoxGroup boxGroup);
+	
+	/**
+	 * Called after {@link #render(DhApiRenderParam, IDhApiRenderableBoxGroup)}. <br>
+	 * Can be used to clean up shared objects or render states.
+	 */
+	void postRender(DhApiRenderParam renderEventParam);
 	
 	@Override void close();
 	

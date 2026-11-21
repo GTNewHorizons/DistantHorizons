@@ -1,11 +1,8 @@
 package com.seibel.distanthorizons.core.dataObjects;
 
 import com.seibel.distanthorizons.core.dataObjects.fullData.FullDataPointIdMap;
-import com.seibel.distanthorizons.core.dependencyInjection.SingletonInjector;
-import com.seibel.distanthorizons.core.wrapperInterfaces.IWrapperFactory;
 import com.seibel.distanthorizons.core.wrapperInterfaces.block.IBlockStateWrapper;
 import com.seibel.distanthorizons.core.wrapperInterfaces.world.IBiomeWrapper;
-import org.jetbrains.annotations.NotNull;
 
 import java.util.concurrent.ConcurrentHashMap;
 
@@ -20,10 +17,9 @@ import java.util.concurrent.ConcurrentHashMap;
  */
 public class BlockBiomeWrapperPair
 {
-	private static final IWrapperFactory WRAPPER_FACTORY = SingletonInjector.INSTANCE.get(IWrapperFactory.class);
-	
 	/** two levels are present so we don't need to use a key object */
-	private static final ConcurrentHashMap<IBlockStateWrapper, ConcurrentHashMap<IBiomeWrapper, BlockBiomeWrapperPair>> CACHED_PAIR_BY_BIOME_BY_BLOCK = new ConcurrentHashMap<>();
+	private static final ConcurrentHashMap<IBlockStateWrapper, ConcurrentHashMap<IBiomeWrapper, BlockBiomeWrapperPair>> CACHED_PAIR_BY_BIOME_BY_BLOCK 
+		= new ConcurrentHashMap<>();
 	
 	public final IBiomeWrapper biome;
 	public final IBlockStateWrapper blockState;
@@ -37,6 +33,7 @@ public class BlockBiomeWrapperPair
 	//=============//
 	// constructor //
 	//=============//
+	//region
 	
 	public static BlockBiomeWrapperPair get(IBlockStateWrapper blockState, IBiomeWrapper biome)
 	{
@@ -73,11 +70,14 @@ public class BlockBiomeWrapperPair
 		this.blockState = blockState;
 	}
 	
+	//endregion
+	
 	
 	
 	//===========//
 	// overrides //
 	//===========//
+	//region
 	
 	/** 
 	 * Reminder: this hash code won't always be unique, collisions can occur;
@@ -129,11 +129,25 @@ public class BlockBiomeWrapperPair
 	@Override
 	public String toString() { return this.serialize(); }
 	
+	//endregion
+	
+	
+	
+	//================//
+	// cache handling //
+	//================//
+	//region
+	
+	public static void clearCache() { CACHED_PAIR_BY_BIOME_BY_BLOCK.clear(); }
+	
+	//endregion
+	
 	
 	
 	//=============//
 	// serializing //
 	//=============//
+	//region
 	
 	public String serialize() 
 	{
@@ -144,6 +158,8 @@ public class BlockBiomeWrapperPair
 		
 		return this.serialString;
 	}
+	
+	//endregion	
 	
 	
 	

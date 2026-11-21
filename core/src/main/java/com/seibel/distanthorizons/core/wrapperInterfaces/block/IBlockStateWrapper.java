@@ -21,7 +21,9 @@ package com.seibel.distanthorizons.core.wrapperInterfaces.block;
 
 import com.seibel.distanthorizons.api.interfaces.block.IDhApiBlockStateWrapper;
 import com.seibel.distanthorizons.api.methods.events.abstractEvents.DhApiBlockColorOverrideEvent;
+import com.seibel.distanthorizons.api.methods.events.abstractEvents.DhApiBlockModelOverrideEvent;
 import com.seibel.distanthorizons.api.methods.events.abstractEvents.DhApiBlockTextureOverrideEvent;
+import com.seibel.distanthorizons.core.enums.EDhDirection;
 import com.seibel.distanthorizons.core.util.LodUtil;
 
 import java.awt.*;
@@ -44,6 +46,10 @@ public interface IBlockStateWrapper extends IDhApiBlockStateWrapper
 	 */
 	int getOpacity();
 	
+	/**
+	 * @see LodUtil#MAX_MC_LIGHT
+	 * @see LodUtil#MIN_MC_LIGHT
+	 */
 	int getLightEmission();
 	
 	byte getMaterialId();
@@ -64,11 +70,41 @@ public interface IBlockStateWrapper extends IDhApiBlockStateWrapper
 	
 	boolean isIceBlock();
 	
+	/** 
+	 * Returns how full a block's liquid is:
+	 * 1 (thinnest) to 8 (full), waterlogged blocks are full. 
+	 * 0 means it has no liquid. 
+	 * 
+	 * @see LodUtil#NO_FLUID_AMOUNT
+	 * @see LodUtil#MIN_FLUID_AMOUNT
+	 * @see LodUtil#MAX_FLUID_AMOUNT
+	 */
+	int getFluidAmount();
+	
+	/** Blocks with water in them that aren't fluid blocks (a waterlogged slab) */
+	boolean isWaterlogged();
+	
+	/** Blocks that lie along an axis, like logs */
+	boolean isRotatedPillar();
+	
+	/** Blocks whose shape fills their whole block space */
+	boolean isFullBlock();
+	
+	/** True if this side fully covers the neighbor's face on that side */
+	boolean isFaceFull(EDhDirection direction);
+	
+	/** How far this block's model can shift sideways, in blocks */
+	float getMaxHorizontalModelOffset();
+	/** How far this block's model can shift down, in blocks */
+	float getMaxVerticalModelOffset();
+	
 	/**
 	 * Some blocks don't pull their texture properly (like bamboo).
 	 * In those cases it's best to just render their base color.
 	 */
 	boolean renderTexture();
+	/** False for blocks listed in blocksDontRenderModelCsv */
+	boolean renderModel();
 	/**
 	 * some blocks like grass blocks should use their bottom texture to 
 	 * prevent incorrectly repeating the side texture on tall LODs. 
@@ -93,6 +129,11 @@ public interface IBlockStateWrapper extends IDhApiBlockStateWrapper
 	 * by {@link DhApiBlockTextureOverrideEvent}
 	 */
 	boolean allowApiTextureOverride();
+	/**
+	 * if true this block can have its model overridden
+	 * by {@link DhApiBlockModelOverrideEvent}
+	 */
+	boolean allowApiModelOverride();
 	
 	Color getMapColor();
 	Color getBeaconTintColor();
