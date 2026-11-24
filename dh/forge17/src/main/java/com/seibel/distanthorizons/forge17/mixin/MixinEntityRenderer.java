@@ -33,6 +33,10 @@ public abstract class MixinEntityRenderer
 	//=====//
 	//region
 	
+    @Inject(method = "setupOverlayRendering", at = @At("HEAD"))
+    private void disableFogBeforeOverlay(CallbackInfo ci)
+    { RenderHelper.disableFogBeforeOverlay(); }
+
     @Inject(method = "setupFog", at = @At(value = "HEAD"))
     private void enableFog(int p_78468_1_, float p_78468_2_, CallbackInfo ci) 
     { RenderHelper.enableFog(); }

@@ -161,6 +161,8 @@ public class RenderHelper
 	//=====//
 	//region
 	
+    public static void disableFogBeforeOverlay() { LWJGL.glDisable(GL32.GL_FOG); }
+
     public static void enableFog() { LWJGL.glEnable(GL32.GL_FOG); }
 
     public static void disableFogDuringSetup() 
