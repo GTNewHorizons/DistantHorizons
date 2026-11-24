@@ -3,6 +3,8 @@ package com.seibel.distanthorizons.forge17.mixin;
 import com.seibel.distanthorizons.core.dependencyInjection.ModAccessorInjector;
 import com.seibel.distanthorizons.core.wrapperInterfaces.modAccessor.IRpleAccessor;
 import net.minecraft.client.renderer.EntityRenderer;
+import net.minecraftforge.client.event.EntityViewRenderEvent.FogDensity;
+import com.seibel.distanthorizons.forge17.ForgeFogOverride;
 import net.minecraft.client.renderer.texture.DynamicTexture;
 
 import org.spongepowered.asm.mixin.Mixin;
@@ -40,6 +42,23 @@ public abstract class MixinEntityRenderer
     @Inject(method = "setupFog", at = @At(value = "HEAD"))
     private void enableFog(int p_78468_1_, float p_78468_2_, CallbackInfo ci) 
     { RenderHelper.enableFog(); }
+
+    @Redirect(
+        method = "setupFog",
+        at = @At(
+            value = "INVOKE",
+            target = "Lcpw/mods/fml/common/eventhandler/EventBus;post(Lcpw/mods/fml/common/eventhandler/Event;)Z",
+            remap = false,
+            ordinal = 0))
+    private boolean captureTerrainFog(EventBus bus, Event event, @Local(argsOnly = true) int fogMode)
+    {
+        boolean canceled = bus.post(event);
+        if (fogMode == 0)
+        {
+            ForgeFogOverride.capture((FogDensity) event, canceled);
+        }
+        return canceled;
+    }
 
     @Redirect(
         method = "setupFog",

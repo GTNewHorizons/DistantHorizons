@@ -92,6 +92,7 @@ public class ForgeMain extends AbstractModInitializer implements IForgeMain
             .isClient()) 
 		{
             this.onInitializeClient();
+            ForgeFogOverride.register();
 			
 			// greg tech
             if (Loader.isModLoaded("gregtech") 
